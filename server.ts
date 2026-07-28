@@ -23,12 +23,13 @@ const fbApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const databaseId = firebaseConfigData.firestoreDatabaseId || '(default)';
 const db = getFirestore(fbApp, databaseId);
 
-// Helper to generate social share Cloudinary URL
+// Helper to generate social share Cloudinary URL (1200x630 format)
 function getSocialImageUrl(url: string): string {
-  if (!url || !url.includes('cloudinary.com')) return url || '';
+  if (!url) return 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop';
+  if (!url.includes('cloudinary.com')) return url;
   const uploadIndex = url.indexOf('/upload/');
   if (uploadIndex === -1) return url;
-  return url.slice(0, uploadIndex + 8) + 'f_auto,q_auto,w_1200,h_630,c_pad,b_auto:predominant/' + url.slice(uploadIndex + 8);
+  return url.slice(0, uploadIndex + 8) + 'f_auto,q_auto,w_1200,h_630,c_fill,g_auto/' + url.slice(uploadIndex + 8);
 }
 
 // Health check route
@@ -45,13 +46,10 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: 'spa',
     });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
   }
 
-  // Dynamic Open Graph handler for artwork pages /art/:id
+  // Dynamic Open Graph & Twitter Cards handler for artwork pages /art/:id
+  // MUST be registered BEFORE static / vite middleware so crawlers get SSR Open Graph tags
   app.get('/art/:id', async (req, res, next) => {
     const artId = req.params.id;
     try {
@@ -63,47 +61,80 @@ async function startServer() {
         }
       }
 
+      if (!artworkData) {
+        return next();
+      }
+
       let templateHtml = '';
       if (!isProd && vite) {
-        templateHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+        const indexPath = path.join(process.cwd(), 'index.html');
+        templateHtml = fs.readFileSync(indexPath, 'utf-8');
         templateHtml = await vite.transformIndexHtml(req.originalUrl, templateHtml);
       } else {
-        templateHtml = fs.readFileSync(path.join(process.cwd(), 'dist', 'index.html'), 'utf-8');
+        const distIndexPath = path.join(process.cwd(), 'dist', 'index.html');
+        if (fs.existsSync(distIndexPath)) {
+          templateHtml = fs.readFileSync(distIndexPath, 'utf-8');
+        } else {
+          templateHtml = fs.readFileSync(path.join(process.cwd(), 'index.html'), 'utf-8');
+        }
       }
 
-      if (artworkData) {
-        const title = `${artworkData.title || 'عمل فني'} - للفنان ${artworkData.artistName || 'معرض الفنون'}`;
-        const description = artworkData.description || `استكشف اللوحة الفنية "${artworkData.title}" على منصة معرض الفنون العربية.`;
-        const imageUrl = getSocialImageUrl(artworkData.imageUrl);
-        const fullUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
+      const artist = artworkData.artistName || 'فنان المعرض';
+      const rawTitle = artworkData.title || 'عمل فني';
+      const pageTitle = `${rawTitle} - بريشة الفنان ${artist} | معرض الفنون`;
+      const description = artworkData.description
+        ? (artworkData.description.length > 160 ? artworkData.description.slice(0, 157) + '...' : artworkData.description)
+        : `استكشف اللوحة الفنية "${rawTitle}" بريشة الفنان ${artist} في منصة معرض الفنون العربية.`;
+      const imageUrl = getSocialImageUrl(artworkData.imageUrl);
+      const host = req.get('host') || 'localhost:3000';
+      const protocol = req.protocol || 'https';
+      const fullUrl = `${protocol}://${host}${req.originalUrl}`;
 
-        const ogTags = `
-    <!-- Dynamic Open Graph Meta Tags for Social Media Sharing -->
-    <title>${title}</title>
-    <meta name="description" content="${description}">
+      // Clean existing tags to avoid duplicates
+      templateHtml = templateHtml.replace(/<title>.*?<\/title>/gi, '');
+      templateHtml = templateHtml.replace(/<meta\s+property="og:[^"]*"\s*\/?>/gi, '');
+      templateHtml = templateHtml.replace(/<meta\s+property="og:[^"]*"\s+content="[^"]*"\s*\/?>/gi, '');
+      templateHtml = templateHtml.replace(/<meta\s+name="twitter:[^"]*"\s+content="[^"]*"\s*\/?>/gi, '');
+
+      const ogTags = `
+    <!-- Dynamic Open Graph & Social Sharing Meta Tags -->
+    <title>${pageTitle}</title>
+    <meta name="description" content="${description}" />
     <meta property="og:type" content="article" />
-    <meta property="og:title" content="${title}" />
+    <meta property="og:title" content="${rawTitle} - بريشة الفنان ${artist}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:image:secure_url" content="${imageUrl}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:url" content="${fullUrl}" />
     <meta property="og:site_name" content="معرض الفنون" />
+    
+    <!-- Twitter / X Summary Large Image Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${title}" />
+    <meta name="twitter:title" content="${rawTitle} - بريشة الفنان ${artist}" />
     <meta name="twitter:description" content="${description}" />
     <meta name="twitter:image" content="${imageUrl}" />
+    <meta name="twitter:image:alt" content="${rawTitle}" />
 `;
 
-        templateHtml = templateHtml.replace('</head>', `${ogTags}\n</head>`);
-      }
+      templateHtml = templateHtml.replace('</head>', `${ogTags}\n</head>`);
 
-      res.status(200).set({ 'Content-Type': 'text/html' }).end(templateHtml);
+      res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).end(templateHtml);
     } catch (err) {
       console.error('Error rendering Open Graph tags:', err);
       next();
     }
   });
+
+  // Serve Vite / Static files AFTER SSR routes
+  if (!isProd && vite) {
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+  }
 
   // Fallback for SPA routing in production
   if (isProd) {

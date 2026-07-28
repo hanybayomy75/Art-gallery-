@@ -103,7 +103,7 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({ artwork, onClick, show
             {artwork.title}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-            بقلم / {artwork.artistName}
+            بريشة الفنان / {artwork.artistName}
           </p>
         </div>
 

@@ -51,6 +51,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [relatedWorks, setRelatedWorks] = useState<Artwork[]>([]);
   const [likeAnimating, setLikeAnimating] = useState(false);
+  const [showSocialPreview, setShowSocialPreview] = useState(false);
 
   useEffect(() => {
     if (!artwork) return;
@@ -286,57 +287,129 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   <span>{likesCount} إعجاب</span>
                 </button>
 
-                {/* Mobile Native Share / Copy */}
-                <button
-                  onClick={handleNativeShare}
-                  className="px-4 py-2.5 rounded-2xl bg-[var(--color-primary)] text-white text-sm font-bold shadow-md hover:opacity-95 transition-all flex items-center gap-2"
-                >
-                  <Share2 className="w-4 h-4" />
-                  مشاركة
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* Toggle Social Preview Card Button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowSocialPreview(!showSocialPreview)}
+                    className="px-3 py-2 rounded-2xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-600 transition-all flex items-center gap-1.5"
+                    title="معاينة شكل الصورة والرابط عند المشاركة على وسائل التواصل"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                    {showSocialPreview ? 'إخفاء المعاينة' : 'معاينة البطاقة'}
+                  </button>
+
+                  {/* Native Share */}
+                  <button
+                    onClick={handleNativeShare}
+                    className="px-4 py-2 rounded-2xl bg-[var(--color-primary)] text-white text-xs font-bold shadow-md hover:opacity-95 transition-all flex items-center gap-1.5"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    مشاركة
+                  </button>
+                </div>
 
               </div>
 
-              {/* Social Platforms Row */}
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs text-slate-500">
-                <span className="font-semibold">نشر على:</span>
-                <div className="flex items-center gap-2">
+              {/* Social Platforms Direct Buttons */}
+              <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-500">
+                  <span className="font-bold text-slate-700 dark:text-slate-300">مشاركة مباشر مع بطاقة الصورة:</span>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-2">
+                  <a
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`العمل الفني "${artwork.title}" بريشة الفنان ${artwork.artistName}`)}&url=${encodeURIComponent(shareUrl)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-all text-xs flex items-center gap-1.5 shadow-sm"
+                  >
+                    <span className="font-black text-xs">X</span> إكس (تويتر)
+                  </a>
+
                   <a
                     href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-2 rounded-xl bg-[#1877F2]/10 text-[#1877F2] hover:bg-[#1877F2] hover:text-white transition-all"
-                    title="مشاركة على Facebook"
+                    className="px-3 py-1.5 rounded-xl bg-[#1877F2] text-white font-bold hover:bg-[#166fe5] transition-all text-xs flex items-center gap-1.5 shadow-sm"
                   >
-                    FB
+                    فيسبوك
                   </a>
+
                   <a
-                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`شاهد العمل الفني "${artwork.title}" للفنان ${artwork.artistName}: ${shareUrl}`)}`}
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`شاهد العمل الفني "${artwork.title}" بريشة الفنان ${artwork.artistName}\n${shareUrl}`)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-2 rounded-xl bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366] hover:text-white transition-all"
-                    title="مشاركة عبر WhatsApp"
+                    className="px-3 py-1.5 rounded-xl bg-[#25D366] text-white font-bold hover:bg-[#20bd5a] transition-all text-xs flex items-center gap-1.5 shadow-sm"
                   >
-                    WA
+                    واتساب
                   </a>
+
                   <a
-                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`العمل الفني "${artwork.title}" للفنان ${artwork.artistName}`)}&url=${encodeURIComponent(shareUrl)}`}
+                    href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`العمل الفني "${artwork.title}" بريشة الفنان ${artwork.artistName}`)}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="p-2 rounded-xl bg-slate-900/10 dark:bg-white/10 text-slate-900 dark:text-white hover:bg-slate-900 hover:text-white transition-all"
-                    title="مشاركة على X"
+                    className="px-3 py-1.5 rounded-xl bg-[#229ED9] text-white font-bold hover:bg-[#1d8cb0] transition-all text-xs flex items-center gap-1.5 shadow-sm"
                   >
-                    X
+                    تيليجرام
                   </a>
+
                   <button
                     onClick={handleCopyShareLink}
-                    className="p-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-[var(--color-primary)] hover:text-white transition-all"
-                    title="نسخ رابط العمل"
+                    className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold hover:bg-[var(--color-primary)] hover:text-white transition-all text-xs flex items-center gap-1.5 mr-auto"
                   >
-                    {copiedLink ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                    {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedLink ? 'تم النسخ' : 'نسخ الرابط'}
                   </button>
                 </div>
               </div>
+
+              {/* Social Card Live Preview Display */}
+              {showSocialPreview && (
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-slate-600 dark:text-slate-300">
+                      معاينة البطاقة الاجتماعية (Social Card Preview):
+                    </span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                      صورة بارزة + عنوان ورابط
+                    </span>
+                  </div>
+
+                  {/* Open Graph Card Visualization */}
+                  <div className="rounded-2xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-md">
+                    {/* Image Banner */}
+                    <div className="aspect-[1.91/1] w-full bg-slate-950 relative overflow-hidden flex items-center justify-center">
+                      <img
+                        src={getSocialShareImageUrl(artwork.imageUrl)}
+                        alt={artwork.title}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded-lg border border-white/10 flex items-center gap-1">
+                        <Sparkles className="w-3 h-3 text-[var(--color-primary)]" />
+                        معرض الفنون
+                      </div>
+                    </div>
+
+                    {/* Metadata Footer */}
+                    <div className="p-3 text-right space-y-1 bg-slate-50/80 dark:bg-slate-800/80">
+                      <p className="text-[10px] font-mono font-bold text-slate-400 dir-ltr text-right">
+                        {window.location.host}
+                      </p>
+                      <h4 className="text-xs font-bold text-slate-900 dark:text-white font-serif line-clamp-1">
+                        {artwork.title} - بريشة الفنان {artwork.artistName}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight font-sans">
+                        {artwork.description || `استكشف هذه اللوحة الفنية المميزة في معرض الفنون العربية والعالمية.`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="text-[10px] text-slate-400 text-center leading-normal">
+                    💡 يظهر هذا المظهر المتكامل للصورة مع العنوان والوصف والرابط تلقائياً فور نشر الرابط على إكس (تويتر)، فيسبوك، واتساب، وتيليجرام.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Comments Section */}

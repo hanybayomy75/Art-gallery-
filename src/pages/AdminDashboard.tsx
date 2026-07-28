@@ -75,7 +75,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
       const msgs = await fetchContactMessages();
       setContactMessages(msgs);
 
-      if (isOwner) {
+      if (isAdmin) {
         const userSnap = await getDocs(collection(db, 'users'));
         const uList: UserProfile[] = [];
         userSnap.forEach((d) => uList.push(d.data() as UserProfile));
@@ -151,7 +151,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
 
   const handlePromoteAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isOwner) return;
+    if (!isAdmin) return;
     setUserMsg(null);
 
     const targetEmail = newAdminEmail.trim().toLowerCase();
@@ -184,7 +184,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
   };
 
   const handleDemoteAdmin = async (uid: string, currentRole: UserRole) => {
-    if (!isOwner) return;
+    if (!isAdmin) return;
     if (currentRole === 'owner') {
       alert('لا يمكن سحب صلاحيات مالك الموقع الأصلي!');
       return;
@@ -313,7 +313,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
           رسائل اتصل بنا {newMessagesCount > 0 && `(${newMessagesCount} جديدة)`}
         </button>
 
-        {isOwner && (
+        {isAdmin && (
           <button
             onClick={() => setActiveTab('users')}
             className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 ${
@@ -358,7 +358,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
 
                     <div>
                       <h3 className="text-base font-bold font-serif text-slate-900 dark:text-white">{art.title}</h3>
-                      <p className="text-xs text-slate-500">بقلم / {art.artistName} ({art.userName})</p>
+                      <p className="text-xs text-slate-500">بريشة الفنان / {art.artistName} ({art.userName})</p>
                       {art.description && (
                         <p className="text-xs text-slate-600 dark:text-slate-300 mt-2 line-clamp-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-xl">
                           {art.description}
@@ -571,8 +571,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
         </div>
       )}
 
-      {/* Tab 4: Users & Moderators Management (Owner Only) */}
-      {activeTab === 'users' && isOwner && (
+      {/* Tab 4: Users & Moderators Management */}
+      {activeTab === 'users' && isAdmin && (
         <div className="space-y-6">
           {/* Add Admin Form */}
           <div className="p-6 rounded-3xl bg-[var(--bg-card)] border border-[var(--border-card)] space-y-4">

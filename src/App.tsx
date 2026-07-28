@@ -53,12 +53,14 @@ function MainApp() {
 
   const handleSelectArtwork = (art: Artwork) => {
     setSelectedArtwork(art);
-    // Update browser URL without full reload for shareability
+    // Update document title and browser URL without full reload
+    document.title = `${art.title} - بريشة الفنان ${art.artistName} | معرض الفنون`;
     window.history.pushState({}, '', `/art/${art.id}`);
   };
 
   const handleCloseDetailModal = () => {
     setSelectedArtwork(null);
+    document.title = 'معرض الفنون - منصة اللوحات والأعمال الفنية العربية';
     window.history.pushState({}, '', '/');
   };
 

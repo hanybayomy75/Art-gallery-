@@ -142,10 +142,12 @@ export async function fetchAllArtworksForAdmin(): Promise<Artwork[]> {
   }
 }
 
-export async function createArtwork(data: Omit<Artwork, 'id' | 'status' | 'likesCount' | 'commentsCount' | 'createdAt'>): Promise<string> {
+export async function createArtwork(
+  data: Omit<Artwork, 'id' | 'likesCount' | 'commentsCount' | 'createdAt'> & { status?: ArtworkStatus }
+): Promise<string> {
   const newArtworkData = {
     ...data,
-    status: 'pending' as ArtworkStatus,
+    status: data.status || ('pending' as ArtworkStatus),
     rejectionReason: '',
     isFeatured: false,
     likesCount: 0,

@@ -45,7 +45,9 @@ export const AuthModal: React.FC = () => {
       }
     } catch (err: any) {
       console.error(err);
-      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+      if (err.code === 'auth/unauthorized-domain') {
+        setError(`الدومين الحالي (${window.location.hostname}) غير مضاف في Firebase Console. يرجى إضافته إلى قائمة Authorized Domains في Firebase -> Authentication -> Settings.`);
+      } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('هذا البريد الإلكتروني مسجل بالفعل');
@@ -65,7 +67,11 @@ export const AuthModal: React.FC = () => {
     try {
       await signInWithGoogle();
     } catch (err: any) {
-      setError(err.message || 'فشل تسجيل الدخول بواسطة Google');
+      if (err.code === 'auth/unauthorized-domain') {
+        setError(`الدومين الحالي (${window.location.hostname}) غير مضاف في Firebase Console. يرجى إضافته إلى Authorized Domains في إعدادات Firebase.`);
+      } else {
+        setError(err.message || 'فشل تسجيل الدخول بواسطة Google');
+      }
     } finally {
       setLoading(false);
     }
@@ -77,7 +83,11 @@ export const AuthModal: React.FC = () => {
     try {
       await signInWithFacebook();
     } catch (err: any) {
-      setError(err.message || 'فشل تسجيل الدخول بواسطة Facebook');
+      if (err.code === 'auth/unauthorized-domain') {
+        setError(`الدومين الحالي (${window.location.hostname}) غير مضاف في Firebase Console. يرجى إضافته إلى Authorized Domains في إعدادات Firebase.`);
+      } else {
+        setError(err.message || 'فشل تسجيل الدخول بواسطة Facebook');
+      }
     } finally {
       setLoading(false);
     }

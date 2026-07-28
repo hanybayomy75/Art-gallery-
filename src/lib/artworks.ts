@@ -40,25 +40,8 @@ export async function fetchApprovedArtworks(
 ): Promise<Artwork[]> {
   try {
     const artworksRef = collection(db, 'artworks');
-    let constraints: any[] = [where('status', '==', 'approved')];
-
-    if (categoryFilter !== 'الكل') {
-      constraints.push(where('category', '==', categoryFilter));
-    }
-
-    if (sortOption === 'featured') {
-      constraints.push(where('isFeatured', '==', true));
-    } else if (sortOption === 'likes') {
-      constraints.push(orderBy('likesCount', 'desc'));
-    } else if (sortOption === 'comments') {
-      constraints.push(orderBy('commentsCount', 'desc'));
-    } else {
-      constraints.push(orderBy('createdAt', 'desc'));
-    }
-
-    constraints.push(limit(limitCount));
-
-    const q = query(artworksRef, ...constraints);
+    // Fetch approved artworks using simple equality query to avoid composite index requirement
+    const q = query(artworksRef, where('status', '==', 'approved'), limit(200));
     const querySnapshot = await getDocs(q);
 
     let list: Artwork[] = [];
@@ -66,7 +49,17 @@ export async function fetchApprovedArtworks(
       list.push({ id: docSnap.id, ...docSnap.data() } as Artwork);
     });
 
-    // Client side search filter for query term in title, artistName, or tags
+    // Client-side category filtering
+    if (categoryFilter !== 'الكل') {
+      list = list.filter((art) => art.category === categoryFilter);
+    }
+
+    // Client-side featured filter
+    if (sortOption === 'featured') {
+      list = list.filter((art) => art.isFeatured);
+    }
+
+    // Client-side search query filtering
     if (searchQuery.trim()) {
       const qLower = searchQuery.toLowerCase().trim();
       list = list.filter((art) => 
@@ -77,7 +70,16 @@ export async function fetchApprovedArtworks(
       );
     }
 
-    return list;
+    // Client-side sorting
+    if (sortOption === 'likes') {
+      list.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
+    } else if (sortOption === 'comments') {
+      list.sort((a, b) => (b.commentsCount || 0) - (a.commentsCount || 0));
+    } else { // 'newest' or default or 'featured'
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    }
+
+    return list.slice(0, limitCount);
   } catch (error) {
     console.error('Error fetching artworks:', error);
     return [];

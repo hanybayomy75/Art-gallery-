@@ -1,0 +1,89 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Helper to check if user is admin or owner from user collection
+    function isAdminOrOwner() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']);
+    }
+
+    function isSiteOwner() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner');
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId || isSiteOwner()
+      );
+      allow delete: if isSiteOwner();
+    }
+
+    // Artworks collection
+    match /artworks/{artId} {
+      // Anyone can read approved artworks; owners/admins or the creator can read pending/rejected
+      allow read: if resource.data.status == 'approved' || 
+                  (isAuthenticated() && (resource.data.userId == request.auth.uid || isAdminOrOwner()));
+      
+      // Authenticated users can create artworks with initial status "pending"
+      allow create: if isAuthenticated() && 
+                     request.resource.data.userId == request.auth.uid &&
+                     request.resource.data.status == 'pending';
+      
+      // Update rule: author can edit pending works; admin/owner can edit any work/status
+      allow update: if isAuthenticated() && (
+        (resource.data.userId == request.auth.uid && resource.data.status == 'pending') ||
+        isAdminOrOwner() ||
+        // Allow likes count increment/decrement by authenticated users
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'commentsCount', 'viewsCount']))
+      );
+      
+      // Delete rule: author can delete pending works; admin/owner can delete any work
+      allow delete: if isAuthenticated() && (
+        (resource.data.userId == request.auth.uid && resource.data.status == 'pending') ||
+        isAdminOrOwner()
+      );
+
+      // Likes subcollection
+      match /likes/{userId} {
+        allow read: if true;
+        allow create, delete: if isAuthenticated() && request.auth.uid == userId;
+      }
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+        allow update, delete: if isAuthenticated() && (
+          resource.data.userId == request.auth.uid || isAdminOrOwner()
+        );
+      }
+    }
+
+    // Site settings & categories
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdminOrOwner();
+    }
+
+    // Contact messages collection
+    match /contact_messages/{messageId} {
+      allow create: if true; // Anyone (visitors or registered users) can send contact messages
+      allow read, update, delete: if isAdminOrOwner() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+  }
+}

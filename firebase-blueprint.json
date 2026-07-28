@@ -1,0 +1,44 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "User account information and roles",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "description": "Email address" },
+        "displayName": { "type": "string", "description": "Full name or artist name" },
+        "photoURL": { "type": "string", "description": "Avatar photo URL" },
+        "bio": { "type": "string", "description": "Artist biography" },
+        "role": { "type": "string", "description": "Role: owner, admin, or user" },
+        "themePreference": { "type": "string", "description": "Theme preset preference" },
+        "createdAt": { "type": "string", "description": "ISO creation date" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "artworks": {
+      "title": "Artwork",
+      "description": "Uploaded paintings, drawings, photography and artworks",
+      "properties": {
+        "id": { "type": "string", "description": "Artwork ID" },
+        "title": { "type": "string", "description": "Title of the artwork" },
+        "description": { "type": "string", "description": "Description/story behind artwork" },
+        "category": { "type": "string", "description": "Category name" },
+        "tags": { "type": "array", "description": "Keywords/tags" },
+        "imageUrl": { "type": "string", "description": "Cloudinary image URL" },
+        "cloudinaryPublicId": { "type": "string", "description": "Cloudinary public ID" },
+        "artistName": { "type": "string", "description": "Artist or creator name" },
+        "userId": { "type": "string", "description": "UID of the creator" },
+        "userName": { "type": "string", "description": "Name of the creator" },
+        "userPhoto": { "type": "string", "description": "Avatar URL of creator" },
+        "status": { "type": "string", "description": "pending, approved, or rejected" },
+        "rejectionReason": { "type": "string", "description": "Reason for rejection if rejected" },
+        "isFeatured": { "type": "boolean", "description": "Is featured on homepage" },
+        "likesCount": { "type": "number", "description": "Total count of likes" },
+        "commentsCount": { "type": "number", "description": "Total count of comments" },
+        "viewsCount": { "type": "number", "description": "Total views" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      },
+      "required": ["title", "imageUrl", "category", "userId", "status"]
+    }
+  }
+}

@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { uploadImageToCloudinary } from '../lib/cloudinary';
 import { createArtwork, DEFAULT_CATEGORIES } from '../lib/artworks';
 import { X, Upload, Image as ImageIcon, Sparkles, CheckCircle2, AlertCircle, ShieldCheck, Plus, Trash2 } from 'lucide-react';
-import { ArtworkStatus } from '../types';
+import { ArtworkStatus, FrameStyle, FilterStyle } from '../types';
+import { FRAME_OPTIONS, FILTER_OPTIONS } from './ArtworkFrame';
 
 interface UploadModalProps {
   onSuccess?: () => void;
@@ -19,6 +20,8 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
   const [description, setDescription] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [artistName, setArtistName] = useState(userProfile?.artistName || userProfile?.displayName || '');
+  const [frameStyle, setFrameStyle] = useState<FrameStyle>('none');
+  const [filterStyle, setFilterStyle] = useState<FilterStyle>('normal');
 
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -140,7 +143,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
           userId: user.uid,
           userName: userProfile.displayName || 'فنان معارض',
           userPhoto: userProfile.photoURL || '',
-          status: targetStatus
+          status: targetStatus,
+          frameStyle,
+          filterStyle
         });
       }
 
@@ -382,12 +387,60 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
               نبذة أو وصف مختصر
             </label>
             <textarea
-              rows={3}
+              rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="اكتب القصة أو الأدوات المستخدمة أو شعورك أثناء رسم هذا العمل..."
               className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              اختر إطار العرض الجداري (اختياري)
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {FRAME_OPTIONS.map((fOpt) => (
+                <button
+                  key={fOpt.id}
+                  type="button"
+                  onClick={() => setFrameStyle(fOpt.id)}
+                  className={`p-2 rounded-2xl text-xs font-bold border flex items-center gap-2 transition-all text-right ${
+                    frameStyle === fOpt.id
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary)] ring-2 ring-[var(--color-primary)]/30'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <span className={`w-3 h-3 rounded-full shrink-0 ${fOpt.previewBg}`} />
+                  <span className="truncate">{fOpt.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              اختر فلتر / تأثير الصورة (اختياري)
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {FILTER_OPTIONS.map((filtOpt) => (
+                <button
+                  key={filtOpt.id}
+                  type="button"
+                  onClick={() => setFilterStyle(filtOpt.id)}
+                  className={`p-2 rounded-2xl text-xs font-bold border flex items-center justify-between transition-all text-right ${
+                    filterStyle === filtOpt.id
+                      ? 'border-sky-500 bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-2 ring-sky-500/30'
+                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <span className="truncate">{filtOpt.name}</span>
+                  {filterStyle === filtOpt.id && (
+                    <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Upload Progress Bar */}

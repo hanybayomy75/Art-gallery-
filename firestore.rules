@@ -44,17 +44,17 @@ service cloud.firestore {
                      request.resource.data.userId == request.auth.uid &&
                      request.resource.data.status == 'pending';
       
-      // Update rule: author can edit pending works; admin/owner can edit any work/status
+      // Update rule: author can edit their own works; admin/owner can edit any work/status
       allow update: if isAuthenticated() && (
-        (resource.data.userId == request.auth.uid && resource.data.status == 'pending') ||
+        resource.data.userId == request.auth.uid ||
         isAdminOrOwner() ||
         // Allow likes count increment/decrement by authenticated users
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'commentsCount', 'viewsCount']))
       );
       
-      // Delete rule: author can delete pending works; admin/owner can delete any work
+      // Delete rule: author can delete their own work; admin/owner can delete any work
       allow delete: if isAuthenticated() && (
-        (resource.data.userId == request.auth.uid && resource.data.status == 'pending') ||
+        resource.data.userId == request.auth.uid ||
         isAdminOrOwner()
       );
 

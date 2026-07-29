@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Artwork } from '../types';
+import { ArtworkFrame } from './ArtworkFrame';
 import { getOptimizedImageUrl } from '../lib/cloudinary';
 import { Heart, MessageCircle, Eye, Sparkles, AlertCircle, Clock, CheckCircle2 } from 'lucide-react';
 
@@ -50,23 +51,24 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({ artwork, onClick, show
       className="group relative bg-[var(--bg-card)] rounded-2xl overflow-hidden border border-[var(--border-card)] shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col"
     >
       {/* Image Frame Area */}
-      <div className="relative aspect-[4/5] bg-slate-100 dark:bg-slate-800 overflow-hidden">
+      <div className="relative aspect-[4/5] bg-slate-100 dark:bg-slate-900 overflow-hidden flex items-center justify-center p-2">
         
         {/* Skeleton Loader */}
         {!imageLoaded && (
-          <div className="absolute inset-0 bg-slate-200 dark:bg-slate-700 animate-pulse flex items-center justify-center">
+          <div className="absolute inset-0 bg-slate-200 dark:bg-slate-800 animate-pulse flex items-center justify-center z-10">
             <Sparkles className="w-8 h-8 text-slate-400" />
           </div>
         )}
 
-        <img
+        <ArtworkFrame
           src={thumbnailUrl}
           alt={artwork.title}
-          loading="lazy"
+          frameStyle={artwork.frameStyle || 'none'}
+          filterStyle={artwork.filterStyle || 'normal'}
+          rotation={artwork.rotation || 0}
           onLoad={() => setImageLoaded(true)}
-          className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 ${
-            imageLoaded ? 'opacity-100' : 'opacity-0'
-          }`}
+          className="w-full h-full flex items-center justify-center"
+          imgClassName="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
 
         {/* Hover Overlay Gradient */}

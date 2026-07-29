@@ -187,6 +187,8 @@ export async function updatePendingArtworkData(
   await updateDoc(artRef, updates);
 }
 
+export const updateArtworkData = updatePendingArtworkData;
+
 export async function deleteArtwork(artId: string): Promise<void> {
   await deleteDoc(doc(db, 'artworks', artId));
 }

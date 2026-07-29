@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { X, Mail, Lock, User, Sparkles, AlertCircle } from 'lucide-react';
+import { X, Mail, Lock, User, Sparkles, AlertCircle, Copy, Check } from 'lucide-react';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -19,6 +19,13 @@ export const AuthModal: React.FC = () => {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+
+  const copyHostname = () => {
+    navigator.clipboard.writeText(window.location.hostname);
+    setCopiedDomain(true);
+    setTimeout(() => setCopiedDomain(false), 2500);
+  };
 
   if (!isAuthModalOpen) return null;
 
@@ -46,7 +53,7 @@ export const AuthModal: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       if (err.code === 'auth/unauthorized-domain') {
-        setError(`الدومين الحالي (${window.location.hostname}) غير مضاف في Firebase Console. يرجى إضافته إلى قائمة Authorized Domains في Firebase -> Authentication -> Settings.`);
+        setError(`خطأ في النطاق المصرح به (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) غير مضاف في Firebase Console. لإصلاحه: اذهب إلى Firebase Console -> Authentication -> Settings -> Authorized Domains وأضف النطاق. أو يمكنك استخدام تسجيل الدخول بالبريد الإلكتروني وكلمة المرور أدناه مباشرة.`);
       } else if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
         setError('البريد الإلكتروني أو كلمة المرور غير صحيحة');
       } else if (err.code === 'auth/email-already-in-use') {
@@ -68,7 +75,7 @@ export const AuthModal: React.FC = () => {
       await signInWithGoogle();
     } catch (err: any) {
       if (err.code === 'auth/unauthorized-domain') {
-        setError(`الدومين الحالي (${window.location.hostname}) غير مضاف في Firebase Console. يرجى إضافته إلى Authorized Domains في إعدادات Firebase.`);
+        setError(`خطأ في النطاق (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) غير مضاف في Firebase Console. أضفه في Firebase Console -> Authentication -> Settings -> Authorized Domains، أو استخدم البريد الإلكتروني وكلمة المرور أدناه.`);
       } else {
         setError(err.message || 'فشل تسجيل الدخول بواسطة Google');
       }
@@ -84,7 +91,7 @@ export const AuthModal: React.FC = () => {
       await signInWithFacebook();
     } catch (err: any) {
       if (err.code === 'auth/unauthorized-domain') {
-        setError(`الدومين الحالي (${window.location.hostname}) غير مضاف في Firebase Console. يرجى إضافته إلى Authorized Domains في إعدادات Firebase.`);
+        setError(`خطأ في النطاق (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) غير مضاف في Firebase Console. أضفه في Firebase Console -> Authentication -> Settings -> Authorized Domains، أو استخدم البريد الإلكتروني وكلمة المرور أدناه.`);
       } else {
         setError(err.message || 'فشل تسجيل الدخول بواسطة Facebook');
       }
@@ -128,9 +135,35 @@ export const AuthModal: React.FC = () => {
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-4 p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
-            <span>{error}</span>
+          <div className="mb-4 p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs space-y-2">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+              <span className="leading-relaxed">{error}</span>
+            </div>
+            {error.includes('unauthorized-domain') && (
+              <div className="pt-2 border-t border-rose-200 dark:border-rose-800/60 flex items-center justify-between gap-2">
+                <code className="text-[11px] bg-rose-100 dark:bg-rose-900/50 px-2 py-1 rounded-lg font-mono font-bold truncate max-w-[200px]">
+                  {window.location.hostname}
+                </code>
+                <button
+                  type="button"
+                  onClick={copyHostname}
+                  className="shrink-0 px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold flex items-center gap-1 transition-all"
+                >
+                  {copiedDomain ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      تم النسخ
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      نسخ النطاق
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

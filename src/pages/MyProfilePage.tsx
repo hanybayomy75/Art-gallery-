@@ -82,14 +82,15 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({ onSelectArtwork })
     }
   };
 
-  const handleDeleteMyPendingArtwork = async (artId: string) => {
-    if (!window.confirm('هل أنت تأكد من مسح هذا العمل الفني؟')) return;
+  const handleDeleteMyArtwork = async (artId: string, artTitle: string) => {
+    if (!window.confirm(`هل أنت تأكد من حذف الصورة والعمل الفني "${artTitle}" نهائيًا؟`)) return;
 
     try {
       await deleteArtwork(artId);
       setArtworks((prev) => prev.filter((a) => a.id !== artId));
     } catch (err) {
       console.error(err);
+      alert('حدث خطأ أثناء حذف الصورة.');
     }
   };
 
@@ -359,19 +360,18 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({ onSelectArtwork })
                   </div>
                 )}
 
-                {/* Option to delete pending artwork */}
-                {art.status === 'pending' && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteMyPendingArtwork(art.id);
-                    }}
-                    className="w-full py-1.5 rounded-xl border border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center justify-center gap-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    سحب العمل من المراجعة
-                  </button>
-                )}
+                {/* Option to delete artwork */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteMyArtwork(art.id, art.title);
+                  }}
+                  className="w-full py-1.5 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center justify-center gap-1 transition-all"
+                  title="حذف هذه الصورة والعمل الفني نهائياً"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  {art.status === 'pending' ? 'سحب العمل وحذفه' : 'حذف الصورة'}
+                </button>
               </div>
             ))}
           </div>

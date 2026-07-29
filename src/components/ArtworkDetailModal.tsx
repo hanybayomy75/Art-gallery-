@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Artwork, ArtworkComment } from '../types';
+import { Artwork, ArtworkComment, FrameStyle, FilterStyle } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { ArtworkFrame, FRAME_OPTIONS, FILTER_OPTIONS } from './ArtworkFrame';
 import { 
   checkIfUserLikedArtwork, 
   toggleLikeArtwork, 
@@ -8,7 +9,9 @@ import {
   addArtworkComment, 
   deleteArtworkComment, 
   fetchApprovedArtworks,
-  incrementArtworkViews
+  incrementArtworkViews,
+  updateArtworkData,
+  deleteArtwork
 } from '../lib/artworks';
 import { getOptimizedImageUrl, getSocialShareImageUrl } from '../lib/cloudinary';
 import { 
@@ -26,7 +29,10 @@ import {
   Sparkles,
   Calendar,
   Tag,
-  AlertCircle
+  AlertCircle,
+  RotateCw,
+  Frame as FrameIcon,
+  Save
 } from 'lucide-react';
 
 interface ArtworkDetailModalProps {
@@ -53,10 +59,23 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [showSocialPreview, setShowSocialPreview] = useState(false);
 
+  // Interactive Frame, Rotation & Filter state
+  const [activeFrame, setActiveFrame] = useState<FrameStyle>('none');
+  const [activeRotation, setActiveRotation] = useState<number>(0);
+  const [activeFilter, setActiveFilter] = useState<FilterStyle>('normal');
+  const [isSavingFrame, setIsSavingFrame] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
+
   useEffect(() => {
     if (!artwork) return;
 
     setLikesCount(artwork.likesCount || 0);
+    setActiveFrame(artwork.frameStyle || 'none');
+    setActiveRotation(artwork.rotation || 0);
+    setActiveFilter(artwork.filterStyle || 'normal');
+    setShowConfirmDelete(false);
 
     // Track view count
     incrementArtworkViews(artwork.id);
@@ -79,6 +98,51 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   }, [artwork, user]);
 
   if (!artwork) return null;
+
+  const isStaff = userProfile?.role === 'owner' || userProfile?.role === 'admin';
+  const isOwnerOfWork = user?.uid === artwork.userId;
+  const canEditFrame = isStaff || isOwnerOfWork;
+  const canDelete = isStaff || isOwnerOfWork;
+
+  const handleRotate = () => {
+    setActiveRotation((prev) => (prev + 90) % 360);
+  };
+
+  const handleSaveFrameAndRotation = async () => {
+    setIsSavingFrame(true);
+    try {
+      await updateArtworkData(artwork.id, {
+        frameStyle: activeFrame,
+        rotation: activeRotation,
+        filterStyle: activeFilter
+      });
+      artwork.frameStyle = activeFrame;
+      artwork.rotation = activeRotation;
+      artwork.filterStyle = activeFilter;
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingFrame(false);
+    }
+  };
+
+  const handleExecuteDelete = async () => {
+    if (!artwork) return;
+    setIsDeleting(true);
+    try {
+      await deleteArtwork(artwork.id);
+      onClose();
+      window.location.reload();
+    } catch (err: any) {
+      console.error('Error deleting artwork:', err);
+      alert('حدث خطأ أثناء حذف الصورة: ' + (err?.message || 'يرجى إعادة المحاولة'));
+    } finally {
+      setIsDeleting(false);
+      setShowConfirmDelete(false);
+    }
+  };
 
   const shareUrl = `${window.location.origin}/art/${artwork.id}`;
 
@@ -166,8 +230,6 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
   const highResUrl = getOptimizedImageUrl(artwork.imageUrl, 1600);
 
-  const isStaff = userProfile?.role === 'owner' || userProfile?.role === 'admin';
-
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
@@ -182,21 +244,117 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
           </button>
 
           {/* Left / Top Side: Main Image Frame */}
-          <div className="md:w-3/5 bg-slate-950 relative flex items-center justify-center min-h-[300px] md:min-h-[500px] p-4 group">
-            <img
-              src={highResUrl}
-              alt={artwork.title}
-              className="max-h-[75vh] w-auto object-contain rounded-xl shadow-2xl"
-            />
+          <div className="md:w-3/5 bg-slate-950 relative flex flex-col items-center justify-between min-h-[350px] md:min-h-[520px] p-4 group">
+            <div className="flex-1 flex items-center justify-center my-auto w-full p-2">
+              <ArtworkFrame
+                src={highResUrl}
+                alt={artwork.title}
+                frameStyle={activeFrame}
+                filterStyle={activeFilter}
+                rotation={activeRotation}
+                className="max-h-[65vh]"
+                imgClassName="max-h-[60vh] w-auto object-contain shadow-2xl"
+              />
+            </div>
 
-            {/* Lightbox Trigger Button */}
-            <button
-              onClick={() => setIsLightboxOpen(true)}
-              className="absolute bottom-4 right-4 bg-black/60 hover:bg-black/80 text-white text-xs font-bold px-3 py-2 rounded-xl backdrop-blur-md border border-white/20 flex items-center gap-1.5 transition-all shadow-lg"
-            >
-              <Maximize2 className="w-4 h-4" />
-              تكبير الصورة
-            </button>
+            {/* Frame & Filter Controls Bar */}
+            <div className="w-full bg-black/70 backdrop-blur-md rounded-2xl p-2.5 border border-white/10 flex flex-col gap-2 z-10 mt-2">
+              
+              {/* Rotation & Lightbox Controls */}
+              <div className="flex items-center justify-between gap-2 text-white text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1">
+                    <FrameIcon className="w-3.5 h-3.5 text-amber-400" />
+                    الإطار والتأثيرات:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRotate}
+                    className="px-2.5 py-1 rounded-xl bg-white/10 hover:bg-white/20 font-bold flex items-center gap-1 transition-all text-[11px]"
+                    title="تدوير الصورة 90 درجة"
+                  >
+                    <RotateCw className="w-3.5 h-3.5" />
+                    تدوير ({activeRotation}°)
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {canEditFrame && (
+                    <button
+                      type="button"
+                      onClick={handleSaveFrameAndRotation}
+                      disabled={isSavingFrame}
+                      className={`px-3 py-1 rounded-xl font-bold flex items-center gap-1 transition-all text-[11px] ${
+                        saveSuccess 
+                          ? 'bg-emerald-600 text-white' 
+                          : 'bg-amber-500 hover:bg-amber-600 text-white'
+                      }`}
+                    >
+                      {saveSuccess ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          تم الحفظ
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-3.5 h-3.5" />
+                          {isSavingFrame ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Lightbox Trigger Button */}
+                  <button
+                    onClick={() => setIsLightboxOpen(true)}
+                    className="bg-white/10 hover:bg-white/20 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl border border-white/10 flex items-center gap-1 transition-all"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                    تكبير
+                  </button>
+                </div>
+              </div>
+
+              {/* Frames Selector Options */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 scrollbar-thin">
+                <span className="text-[10px] font-bold text-amber-400 shrink-0">الإطارات:</span>
+                {FRAME_OPTIONS.map((frameOpt) => (
+                  <button
+                    key={frameOpt.id}
+                    type="button"
+                    onClick={() => setActiveFrame(frameOpt.id)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold shrink-0 transition-all flex items-center gap-1.5 border ${
+                      activeFrame === frameOpt.id
+                        ? 'bg-white text-slate-900 border-white shadow-md scale-105'
+                        : 'bg-black/40 text-slate-300 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full ${frameOpt.previewBg}`} />
+                    {frameOpt.name}
+                  </button>
+                ))}
+              </div>
+
+              {/* Filters Selector Options */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 scrollbar-thin border-t border-white/10">
+                <span className="text-[10px] font-bold text-sky-400 shrink-0">فلاتر الصورة:</span>
+                {FILTER_OPTIONS.map((filterOpt) => (
+                  <button
+                    key={filterOpt.id}
+                    type="button"
+                    onClick={() => setActiveFilter(filterOpt.id)}
+                    className={`px-2.5 py-1 rounded-xl text-[10px] font-bold shrink-0 transition-all flex items-center gap-1 border ${
+                      activeFilter === filterOpt.id
+                        ? 'bg-sky-500 text-white border-sky-400 shadow-md scale-105'
+                        : 'bg-black/40 text-slate-300 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    {filterOpt.name}
+                  </button>
+                ))}
+              </div>
+
+            </div>
           </div>
 
           {/* Right Side: Artwork Info & Interaction Panel */}
@@ -225,10 +383,54 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   </div>
                 </div>
 
-                <span className="text-xs font-bold px-3 py-1 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
-                  {artwork.category}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-3 py-1 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
+                    {artwork.category}
+                  </span>
+
+                  {canDelete && !showConfirmDelete && (
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmDelete(true)}
+                      className="px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shadow-md transition-all"
+                      title="حذف هذه الصورة والعمل الفني نهائياً"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      حذف الصورة
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* Confirmation Panel for Delete */}
+              {showConfirmDelete && (
+                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 space-y-3 animate-in fade-in duration-200">
+                  <div className="flex items-start gap-2">
+                    <Trash2 className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <p className="text-xs font-bold leading-relaxed">
+                      هل أنت متأكد من حذف هذه الصورة وهذا العمل الفني نهائيًا؟ لن تتمكن من استرجاعه بعد الحذف.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmDelete(false)}
+                      disabled={isDeleting}
+                      className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition-all"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExecuteDelete}
+                      disabled={isDeleting}
+                      className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1"
+                    >
+                      {isDeleting ? 'جاري الحذف...' : 'نعم، تأكيد الحذف النهائيات'}
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <h2 className="text-2xl font-bold font-serif text-slate-900 dark:text-white leading-tight">

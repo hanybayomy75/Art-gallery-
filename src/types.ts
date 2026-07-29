@@ -15,6 +15,27 @@ export interface UserProfile {
 
 export type ArtworkStatus = 'pending' | 'approved' | 'rejected';
 
+export type FrameStyle = 
+  | 'none' 
+  | 'gold_baroque' 
+  | 'wood_classic' 
+  | 'black_modern' 
+  | 'white_gallery' 
+  | 'floating_canvas' 
+  | 'bronze_vintage';
+
+export type FilterStyle = 
+  | 'normal' 
+  | 'grayscale' 
+  | 'sepia' 
+  | 'vintage' 
+  | 'vivid' 
+  | 'cool' 
+  | 'warm' 
+  | 'contrast' 
+  | 'invert' 
+  | 'blur_soft';
+
 export interface Artwork {
   id: string;
   title: string;
@@ -33,6 +54,9 @@ export interface Artwork {
   likesCount: number;
   commentsCount: number;
   viewsCount?: number;
+  rotation?: number; // 0, 90, 180, 270 degrees
+  frameStyle?: FrameStyle;
+  filterStyle?: FilterStyle;
   createdAt: string;
 }
 

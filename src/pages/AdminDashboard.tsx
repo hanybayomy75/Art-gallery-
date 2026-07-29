@@ -47,9 +47,9 @@ interface AdminDashboardProps {
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork }) => {
-  const { userProfile } = useAuth();
+  const { user, userProfile } = useAuth();
 
-  const isOwner = userProfile?.role === 'owner';
+  const isOwner = userProfile?.role === 'owner' || user?.email?.toLowerCase() === 'hany.bayomy75@gmail.com';
   const isAdmin = userProfile?.role === 'admin' || isOwner;
 
   const [activeTab, setActiveTab] = useState<'pending' | 'all' | 'messages' | 'users'>('pending');

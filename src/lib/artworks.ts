@@ -18,9 +18,12 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Artwork, ArtworkComment, ArtworkStatus, SortOption } from '../types';
+import { WORLD_MASTERS_ARTWORKS } from '../data/worldMastersData';
 
 export const DEFAULT_CATEGORIES = [
   'الكل',
+  'أعمال الفنانين المرفوعة',
+  'فنانين عالميين',
   'لوحات فنية',
   'رسم يدوي',
   'رسم رقمي',
@@ -36,33 +39,72 @@ export async function fetchApprovedArtworks(
   categoryFilter: string = 'الكل',
   searchQuery: string = '',
   sortOption: SortOption = 'newest',
-  limitCount: number = 30
+  limitCount: number = 60,
+  currentUserId?: string
 ): Promise<Artwork[]> {
   try {
     const artworksRef = collection(db, 'artworks');
-    // Fetch approved artworks using simple equality query to avoid composite index requirement
-    const q = query(artworksRef, where('status', '==', 'approved'), limit(200));
-    const querySnapshot = await getDocs(q);
+    // Fetch approved artworks from Firestore
+    const qApproved = query(artworksRef, where('status', '==', 'approved'), limit(200));
+    const snapApproved = await getDocs(qApproved);
 
-    let list: Artwork[] = [];
-    querySnapshot.forEach((docSnap) => {
-      list.push({ id: docSnap.id, ...docSnap.data() } as Artwork);
+    const userUploadedList: Artwork[] = [];
+    const seenIds = new Set<string>();
+
+    snapApproved.forEach((docSnap) => {
+      seenIds.add(docSnap.id);
+      userUploadedList.push({ id: docSnap.id, ...docSnap.data() } as Artwork);
     });
 
-    // Client-side category filtering
-    if (categoryFilter !== 'الكل') {
-      list = list.filter((art) => art.category === categoryFilter);
+    // If a user is logged in, also fetch their pending artworks so they immediately see their uploaded works
+    if (currentUserId) {
+      try {
+        const qUserPending = query(
+          artworksRef, 
+          where('userId', '==', currentUserId), 
+          where('status', '==', 'pending')
+        );
+        const snapUserPending = await getDocs(qUserPending);
+        snapUserPending.forEach((docSnap) => {
+          if (!seenIds.has(docSnap.id)) {
+            seenIds.add(docSnap.id);
+            userUploadedList.push({ id: docSnap.id, ...docSnap.data() } as Artwork);
+          }
+        });
+      } catch (e) {
+        // Ignore if query fails
+      }
+    }
+
+    // Sort user uploaded works by createdAt descending
+    userUploadedList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+
+    let finalCombined: Artwork[] = [];
+
+    if (categoryFilter === 'أعمال الفنانين المرفوعة') {
+      finalCombined = [...userUploadedList];
+    } else if (categoryFilter === 'فنانين عالميين') {
+      finalCombined = [...WORLD_MASTERS_ARTWORKS];
+    } else if (categoryFilter !== 'الكل') {
+      // Filter user uploads by category
+      const filteredUserUploads = userUploadedList.filter((art) => art.category === categoryFilter);
+      // Filter world masters if any match (world masters are strictly category 'فنانين عالميين')
+      const filteredWorldMasters = WORLD_MASTERS_ARTWORKS.filter((art) => art.category === categoryFilter);
+      finalCombined = [...filteredUserUploads, ...filteredWorldMasters];
+    } else {
+      // 'الكل': User uploaded artworks ALWAYS come FIRST at the top!
+      finalCombined = [...userUploadedList, ...WORLD_MASTERS_ARTWORKS];
     }
 
     // Client-side featured filter
     if (sortOption === 'featured') {
-      list = list.filter((art) => art.isFeatured);
+      finalCombined = finalCombined.filter((art) => art.isFeatured);
     }
 
     // Client-side search query filtering
     if (searchQuery.trim()) {
       const qLower = searchQuery.toLowerCase().trim();
-      list = list.filter((art) => 
+      finalCombined = finalCombined.filter((art) => 
         art.title?.toLowerCase().includes(qLower) ||
         art.artistName?.toLowerCase().includes(qLower) ||
         art.description?.toLowerCase().includes(qLower) ||
@@ -72,21 +114,39 @@ export async function fetchApprovedArtworks(
 
     // Client-side sorting
     if (sortOption === 'likes') {
-      list.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
+      finalCombined.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
     } else if (sortOption === 'comments') {
-      list.sort((a, b) => (b.commentsCount || 0) - (a.commentsCount || 0));
-    } else { // 'newest' or default or 'featured'
-      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      finalCombined.sort((a, b) => (b.commentsCount || 0) - (a.commentsCount || 0));
+    } else if (sortOption === 'newest') {
+      // User uploads stay at top, but order by date
+      finalCombined.sort((a, b) => {
+        const isAUser = !a.id.startsWith('wm-');
+        const isBUser = !b.id.startsWith('wm-');
+        if (isAUser && !isBUser) return -1;
+        if (!isAUser && isBUser) return 1;
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      });
     }
 
-    return list.slice(0, limitCount);
+    return finalCombined.slice(0, limitCount);
   } catch (error) {
     console.error('Error fetching artworks:', error);
-    return [];
+    // Fallback if firestore offline
+    let fallback = WORLD_MASTERS_ARTWORKS;
+    if (categoryFilter === 'فنانين عالميين') {
+      fallback = WORLD_MASTERS_ARTWORKS;
+    } else if (categoryFilter !== 'الكل') {
+      fallback = fallback.filter((art) => art.category === categoryFilter);
+    }
+    return fallback.slice(0, limitCount);
   }
 }
 
 export async function fetchArtworkById(artId: string): Promise<Artwork | null> {
+  // Check if it's a world master artwork
+  const wm = WORLD_MASTERS_ARTWORKS.find((item) => item.id === artId);
+  if (wm) return wm;
+
   try {
     const artDoc = await getDoc(doc(db, 'artworks', artId));
     if (artDoc.exists()) {

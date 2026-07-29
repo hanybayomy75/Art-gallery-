@@ -18,16 +18,19 @@ import {
   Mail,
   PhoneCall,
   Check,
-  ChevronLeft
+  ChevronLeft,
+  Crown
 } from 'lucide-react';
 
 interface NavbarProps {
   onOpenSearch?: () => void;
   activeView: 'home' | 'profile' | 'admin';
   setActiveView: (view: 'home' | 'profile' | 'admin') => void;
+  onSelectCategory?: (category: string) => void;
+  selectedCategory?: string;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => {
+export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView, onSelectCategory, selectedCategory }) => {
   const { 
     user, 
     userProfile, 
@@ -52,7 +55,8 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
     });
   };
 
-  const isStaff = userProfile?.role === 'owner' || userProfile?.role === 'admin';
+  const isOwnerEmail = user?.email?.toLowerCase() === 'hany.bayomy75@gmail.com';
+  const isStaff = isOwnerEmail || userProfile?.role === 'owner' || userProfile?.role === 'admin';
 
   return (
     <>
@@ -89,10 +93,13 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
             {/* Desktop Navigation Links */}
             <nav className="hidden md:flex items-center gap-2">
               <button
-                onClick={() => setActiveView('home')}
-                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
-                  activeView === 'home'
-                    ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+                onClick={() => {
+                  setActiveView('home');
+                  onSelectCategory?.('الكل');
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                  activeView === 'home' && selectedCategory !== 'فنانين عالميين'
+                    ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                 }`}
               >
@@ -100,10 +107,26 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                 الرئيسية والجاليري
               </button>
 
+              <button
+                onClick={() => {
+                  setActiveView('home');
+                  onSelectCategory?.('فنانين عالميين');
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 shadow-sm ${
+                  selectedCategory === 'فنانين عالميين' && activeView === 'home'
+                    ? 'bg-amber-500 text-white shadow-amber-500/30'
+                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 border border-amber-500/30'
+                }`}
+              >
+                <Crown className="w-4 h-4 text-amber-500 dark:text-amber-300" />
+                <span>فنانين عالميين</span>
+                <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold">50</span>
+              </button>
+
               {user && (
                 <button
                   onClick={() => setActiveView('profile')}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
                     activeView === 'profile'
                       ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
                       : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -117,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
               {isStaff && (
                 <button
                   onClick={() => setActiveView('admin')}
-                  className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 ${
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
                     activeView === 'admin'
                       ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
                       : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30'
@@ -133,7 +156,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
 
               <button
                 onClick={() => setIsContactOpen(true)}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5"
+                className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-1.5"
               >
                 <Mail className="w-4 h-4 text-[var(--color-primary)]" />
                 اتصل بنا
@@ -357,12 +380,28 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView }) => 
                 <button
                   onClick={() => {
                     setActiveView('home');
+                    onSelectCategory?.('الكل');
                     setIsSidebarOpen(false);
                   }}
                   className="w-full text-right p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/60 text-slate-900 dark:text-white text-xs font-bold flex items-center gap-2"
                 >
                   <Home className="w-4 h-4 text-[var(--color-primary)]" />
                   الرئيسية والجاليري
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveView('home');
+                    onSelectCategory?.('فنانين عالميين');
+                    setIsSidebarOpen(false);
+                  }}
+                  className="w-full text-right p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-xs font-bold flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-2">
+                    <Crown className="w-4 h-4 text-amber-500" />
+                    <span>روائع فنانين عالميين</span>
+                  </div>
+                  <span className="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-mono font-bold">50 عمل</span>
                 </button>
 
                 {user && (

@@ -14,7 +14,7 @@ service cloud.firestore {
 
     function isSiteOwner() {
       return isAuthenticated() && (
-        (request.auth.token.keys().contains('email') && request.auth.token.email.lower() == 'hany.bayomy75@gmail.com') ||
+        ('email' in request.auth.token && request.auth.token.email.lower() == 'hany.bayomy75@gmail.com') ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner')
       );
     }

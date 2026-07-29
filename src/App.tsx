@@ -16,6 +16,7 @@ import { fetchArtworkById, fetchApprovedArtworks, DEFAULT_CATEGORIES } from './l
 function MainApp() {
   const [activeView, setActiveView] = useState<'home' | 'profile' | 'admin'>('home');
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
 
   // Hero Stats
   const [heroStats, setHeroStats] = useState({
@@ -23,6 +24,19 @@ function MainApp() {
     totalLikes: 48,
     totalCategories: DEFAULT_CATEGORIES.length - 1
   });
+
+  const handleSelectCategory = (cat: string) => {
+    setSelectedCategory(cat);
+    if (activeView !== 'home') {
+      setActiveView('home');
+    }
+    setTimeout(() => {
+      const galleryEl = document.getElementById('gallery-section');
+      if (galleryEl) {
+        galleryEl.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 100);
+  };
 
   // Handle direct URL navigation to /art/:id
   useEffect(() => {
@@ -68,7 +82,12 @@ function MainApp() {
     <div className="min-h-screen bg-[var(--bg-app)] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200" dir="rtl">
       
       {/* Navigation Header */}
-      <Navbar activeView={activeView} setActiveView={setActiveView} />
+      <Navbar 
+        activeView={activeView} 
+        setActiveView={setActiveView} 
+        selectedCategory={selectedCategory}
+        onSelectCategory={handleSelectCategory}
+      />
 
       {/* Main Content Area */}
       <main className="flex-1">
@@ -81,11 +100,16 @@ function MainApp() {
                   galleryEl.scrollIntoView({ behavior: 'smooth' });
                 }
               }}
+              onSelectArtwork={handleSelectArtwork}
               stats={heroStats}
             />
 
             <div id="gallery-section">
-              <GalleryGrid onSelectArtwork={handleSelectArtwork} />
+              <GalleryGrid 
+                onSelectArtwork={handleSelectArtwork} 
+                selectedCategory={selectedCategory}
+                onCategoryChange={setSelectedCategory}
+              />
             </div>
           </div>
         )}

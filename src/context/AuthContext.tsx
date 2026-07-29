@@ -68,18 +68,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        let profile = await getUserProfile(currentUser.uid);
-        if (!profile) {
-          profile = await createOrUpdateUserProfile(currentUser);
-        }
-        setUserProfile(profile);
+        try {
+          let profile = await getUserProfile(currentUser.uid);
+          if (!profile) {
+            profile = await createOrUpdateUserProfile(currentUser);
+          }
+          setUserProfile(profile);
 
-        // Sync theme preference from profile if present
-        if (profile.themePreset) {
-          setThemePresetState(profile.themePreset as ThemePreset);
-        }
-        if (profile.themeMode) {
-          setThemeModeState(profile.themeMode as ThemeMode);
+          // Sync theme preference from profile if present
+          if (profile.themePreset) {
+            setThemePresetState(profile.themePreset as ThemePreset);
+          }
+          if (profile.themeMode) {
+            setThemeModeState(profile.themeMode as ThemeMode);
+          }
+        } catch (err) {
+          console.warn('Notice: Failed to sync profile with server:', err);
+          // Fallback in-memory profile so user session remains functional
+          setUserProfile({
+            uid: currentUser.uid,
+            email: currentUser.email || '',
+            displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'فنان معارض',
+            artistName: currentUser.displayName || currentUser.email?.split('@')[0] || 'فنان معارض',
+            photoURL: currentUser.photoURL || '',
+            bio: '',
+            role: currentUser.email?.toLowerCase() === 'hany.bayomy75@gmail.com' ? 'owner' : 'user',
+            themePreset: 'classic',
+            themeMode: 'light',
+            createdAt: new Date().toISOString()
+          });
         }
       } else {
         setUserProfile(null);

@@ -426,7 +426,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                       disabled={isDeleting}
                       className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1"
                     >
-                      {isDeleting ? 'جاري الحذف...' : 'نعم، تأكيد الحذف النهائيات'}
+                      {isDeleting ? 'جاري الحذف...' : 'نعم، تأكيد الحذف النهائي'}
                     </button>
                   </div>
                 </div>

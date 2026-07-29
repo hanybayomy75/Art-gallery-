@@ -133,7 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthModalOpen(false);
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
-      throw new Error(err.message || 'حدث خطأ أثناء تسجيل الدخول برابط Google');
+      throw err;
     }
   };
 
@@ -145,7 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsAuthModalOpen(false);
     } catch (err: any) {
       console.error('Facebook Sign-In Error:', err);
-      throw new Error('حدث خطأ أثناء تسجيل الدخول عبر Facebook. تأكد من تفعيل مزود Facebook في إعدادات Firebase');
+      throw err;
     }
   };
 

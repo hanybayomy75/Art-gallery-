@@ -12,15 +12,19 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Helper to check if user is admin or owner from user collection
-    function isAdminOrOwner() {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner']);
+    function isSiteOwner() {
+      return isAuthenticated() && (
+        (request.auth.token.keys().contains('email') && request.auth.token.email.lower() == 'hany.bayomy75@gmail.com') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner')
+      );
     }
 
-    function isSiteOwner() {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'owner');
+    // Helper to check if user is admin or owner from user collection
+    function isAdminOrOwner() {
+      return isAuthenticated() && (
+        isSiteOwner() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'owner'])
+      );
     }
 
     // Users collection

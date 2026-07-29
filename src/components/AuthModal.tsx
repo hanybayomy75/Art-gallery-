@@ -74,10 +74,17 @@ export const AuthModal: React.FC = () => {
     try {
       await signInWithGoogle();
     } catch (err: any) {
-      if (err.code === 'auth/unauthorized-domain') {
-        setError(`خطأ في النطاق (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) غير مضاف في Firebase Console. أضفه في Firebase Console -> Authentication -> Settings -> Authorized Domains، أو استخدم البريد الإلكتروني وكلمة المرور أدناه.`);
+      console.error('Google auth error detail:', err);
+      if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setError(`خطأ النطاق غير المصرح به (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) يحتاج للإضافة في قائمة Authorized Domains بـ Firebase Console. يمكنك نسخته أدناه، أو تسجيل الدخول بالبريد الإلكتروني مباشرة.`);
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة ثم المحاولة مجددًا.');
+      } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        setError('تم إغلاق نافذة تسجيل الدخول قبل إكمال العملية.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('تسجيل الدخول عبر Google غير مفعل في Firebase Console. يرجى تفعيله في قسم Authentication -> Sign-in method.');
       } else {
-        setError(err.message || 'فشل تسجيل الدخول بواسطة Google');
+        setError(err.message || 'فشل تسجيل الدخول بواسطة Google. يمكنك تجربة التسجيل بالبريد الإلكتروني.');
       }
     } finally {
       setLoading(false);
@@ -90,10 +97,15 @@ export const AuthModal: React.FC = () => {
     try {
       await signInWithFacebook();
     } catch (err: any) {
-      if (err.code === 'auth/unauthorized-domain') {
-        setError(`خطأ في النطاق (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) غير مضاف في Firebase Console. أضفه في Firebase Console -> Authentication -> Settings -> Authorized Domains، أو استخدم البريد الإلكتروني وكلمة المرور أدناه.`);
+      console.error('Facebook auth error detail:', err);
+      if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
+        setError(`خطأ النطاق غير المصرح به (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) يحتاج للإضافة في قائمة Authorized Domains بـ Firebase Console. يمكنك نسخته أدناه، أو تسجيل الدخول بالبريد الإلكتروني مباشرة.`);
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة ثم المحاولة مجددًا.');
+      } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        setError('تم إغلاق نافذة تسجيل الدخول قبل إكمال العملية.');
       } else {
-        setError(err.message || 'فشل تسجيل الدخول بواسطة Facebook');
+        setError(err.message || 'فشل تسجيل الدخول بواسطة Facebook. تأكد من تفعيل مزود Facebook في إعدادات Firebase.');
       }
     } finally {
       setLoading(false);

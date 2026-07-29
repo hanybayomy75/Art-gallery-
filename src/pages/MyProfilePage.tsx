@@ -36,6 +36,8 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({ onSelectArtwork })
   const [artistName, setArtistName] = useState('');
   const [bio, setBio] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [deletingArtId, setDeletingArtId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (userProfile) {
@@ -82,15 +84,17 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({ onSelectArtwork })
     }
   };
 
-  const handleDeleteMyArtwork = async (artId: string, artTitle: string) => {
-    if (!window.confirm(`هل أنت تأكد من حذف الصورة والعمل الفني "${artTitle}" نهائيًا؟`)) return;
-
+  const handleConfirmDeleteArtwork = async (artId: string) => {
+    setIsDeleting(true);
     try {
       await deleteArtwork(artId);
       setArtworks((prev) => prev.filter((a) => a.id !== artId));
-    } catch (err) {
-      console.error(err);
-      alert('حدث خطأ أثناء حذف الصورة.');
+      setDeletingArtId(null);
+    } catch (err: any) {
+      console.error('Error deleting artwork:', err);
+      alert('حدث خطأ أثناء حذف الصورة: ' + (err?.message || 'يرجى إعادة المحاولة'));
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -361,17 +365,42 @@ export const MyProfilePage: React.FC<MyProfilePageProps> = ({ onSelectArtwork })
                 )}
 
                 {/* Option to delete artwork */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteMyArtwork(art.id, art.title);
-                  }}
-                  className="w-full py-1.5 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center justify-center gap-1 transition-all"
-                  title="حذف هذه الصورة والعمل الفني نهائياً"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  {art.status === 'pending' ? 'سحب العمل وحذفه' : 'حذف الصورة'}
-                </button>
+                {deletingArtId === art.id ? (
+                  <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-xs text-rose-800 dark:text-rose-200 space-y-2 animate-in fade-in duration-150">
+                    <p className="font-bold text-center">تأكيد حذف هذا العمل نهائياً؟</p>
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDeletingArtId(null)}
+                        disabled={isDeleting}
+                        className="px-3 py-1 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-300"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleConfirmDeleteArtwork(art.id)}
+                        disabled={isDeleting}
+                        className="px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-sm"
+                      >
+                        {isDeleting ? 'جاري الحذف...' : 'حذف نهائي'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeletingArtId(art.id);
+                    }}
+                    className="w-full py-1.5 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold flex items-center justify-center gap-1 transition-all"
+                    title="حذف هذه الصورة والعمل الفني نهائياً"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {art.status === 'pending' ? 'سحب العمل وحذفه' : 'حذف الصورة'}
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -64,6 +64,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
   const [rejectingArtId, setRejectingArtId] = useState<string | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
 
+  // Deletion modal state
+  const [deletingArtId, setDeletingArtId] = useState<string | null>(null);
+
   // Artwork Edit Modal State
   const [editingArt, setEditingArt] = useState<Artwork | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -148,13 +151,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
   };
 
   const handleDelete = async (artId: string) => {
-    if (!window.confirm('هل أنت تأكد من حذف هذا العمل نهائيًا؟')) return;
     try {
       await deleteArtwork(artId);
       setPendingWorks((prev) => prev.filter((a) => a.id !== artId));
       setAllWorks((prev) => prev.filter((a) => a.id !== artId));
-    } catch (err) {
-      console.error(err);
+      setDeletingArtId(null);
+    } catch (err: any) {
+      console.error('Error deleting artwork:', err);
+      alert('حدث خطأ أثناء حذف العمل: ' + (err?.message || 'يرجى المحاولة مجددًا'));
     }
   };
 
@@ -271,7 +275,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
       alert('لا يمكن سحب صلاحيات مالك الموقع الأصلي!');
       return;
     }
-    if (!window.confirm('هل تريد تحويل هذا المشرف إلى مستخدم عادي؟')) return;
 
     try {
       await updateDoc(doc(db, 'users', uid), { role: 'user' });
@@ -294,7 +297,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
   };
 
   const handleDeleteMessage = async (msgId: string) => {
-    if (!window.confirm('هل تريد حذف هذه الرسالة؟')) return;
     try {
       await deleteContactMessage(msgId);
       setContactMessages((prev) => prev.filter((m) => m.id !== msgId));

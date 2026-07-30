@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Artwork, SortOption } from '../types';
 import { fetchApprovedArtworks, DEFAULT_CATEGORIES } from '../lib/artworks';
 import { ArtworkCard } from './ArtworkCard';
-import { Search, SlidersHorizontal, Sparkles, Filter, RefreshCw, Upload, Crown } from 'lucide-react';
+import { Search, SlidersHorizontal, Sparkles, Filter, RefreshCw, Upload, Crown, Layers } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface GalleryGridProps {
@@ -48,7 +48,14 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
 
   useEffect(() => {
     loadArtworks();
-  }, [selectedCategory, sortOption, user?.uid]);
+    const handleRefresh = () => loadArtworks();
+    window.addEventListener('artwork_changed', handleRefresh);
+    window.addEventListener('artwork_uploaded', handleRefresh);
+    return () => {
+      window.removeEventListener('artwork_changed', handleRefresh);
+      window.removeEventListener('artwork_uploaded', handleRefresh);
+    };
+  }, [selectedCategory, searchQuery, sortOption, user?.uid]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,6 +92,7 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
             className="px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
           >
             <option value="newest">الأحدث نشرًا</option>
+            <option value="rating">الأعلى تقييماً 🌟</option>
             <option value="likes">الأكثر إعجابًا</option>
             <option value="comments">الأكثر تعليقًا</option>
             <option value="featured">الأعمال المميزة فقط</option>
@@ -97,8 +105,6 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         {DEFAULT_CATEGORIES.map((cat) => {
           const isSelected = selectedCategory === cat;
-          const isWorldMasters = cat === 'فنانين عالميين';
-          const isUserUploaded = cat === 'أعمال الفنانين المرفوعة';
           return (
             <button
               key={cat}
@@ -106,15 +112,9 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
               className={`px-4 py-2 rounded-2xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all shadow-sm flex items-center gap-1.5 ${
                 isSelected
                   ? 'bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-accent)] text-white scale-105 shadow-md'
-                  : isUserUploaded
-                  ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/20'
-                  : isWorldMasters
-                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/20'
                   : 'bg-[var(--bg-card)] border border-[var(--border-card)] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              {isUserUploaded && <Upload className="w-3.5 h-3.5 text-emerald-500" />}
-              {isWorldMasters && <Crown className="w-3.5 h-3.5 text-amber-500" />}
               {cat}
             </button>
           );
@@ -137,7 +137,7 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
           <p className="text-xs text-slate-500">جرب البحث بكلمة مختلفة أو اختر تصنيفاً آخر لمشاهدة اللوحات المتاحة</p>
           <button
             onClick={() => {
-              setSelectedCategory('الكل');
+              handleCategorySelect('الكل');
               setSearchQuery('');
               setSortOption('newest');
             }}

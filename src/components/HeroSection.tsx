@@ -236,21 +236,22 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onExploreClick, onSele
                       </div>
                     </>
                   ) : (
-                    /* Fallback default card if no artworks yet */
-                    <div className="w-full h-full relative">
-                      <img
-                        src="https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1000&auto=format&fit=crop&q=80"
-                        alt="معرض الفنون"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent p-5 flex flex-col justify-end text-white text-right">
-                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500 w-fit mb-2">لوحة افتراضية</span>
-                        <h3 className="text-xl font-bold font-serif">هارموني الألوان الشرقية</h3>
-                        <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-amber-400/40 w-fit mt-2">
-                          <Palette className="w-4 h-4 text-amber-400" />
-                          <span className="text-xs font-bold text-amber-300">الفنان / معرض الفنون</span>
-                        </div>
+                    /* Clean empty state when no artworks uploaded yet */
+                    <div className="w-full h-full relative flex flex-col items-center justify-center p-6 bg-slate-900 text-center text-white">
+                      <div className="w-16 h-16 rounded-full bg-[var(--color-primary)]/20 text-[var(--color-primary)] flex items-center justify-center mb-4 border border-[var(--color-primary)]/30">
+                        <Upload className="w-8 h-8" />
                       </div>
+                      <h3 className="text-lg font-bold font-serif mb-2">معرض الأعمال الفنية</h3>
+                      <p className="text-xs text-slate-300 mb-5 max-w-xs leading-relaxed">
+                        كن أول من ينشر عمله الفني في المعرض لإبهار الجمهور والمهتمين بالإبداع!
+                      </p>
+                      <button
+                        onClick={handleUploadClick}
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-accent)] text-white text-xs font-bold shadow-lg hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
+                      >
+                        <Upload className="w-4 h-4" />
+                        أضف عملك الفني الآن
+                      </button>
                     </div>
                   )}
 

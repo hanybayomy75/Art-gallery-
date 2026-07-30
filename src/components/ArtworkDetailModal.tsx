@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Artwork, ArtworkComment, FrameStyle, FilterStyle } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { ArtworkFrame, FRAME_OPTIONS, FILTER_OPTIONS } from './ArtworkFrame';
+import { StarRating } from './StarRating';
 import { 
   checkIfUserLikedArtwork, 
   toggleLikeArtwork, 
@@ -11,8 +12,13 @@ import {
   fetchApprovedArtworks,
   incrementArtworkViews,
   updateArtworkData,
-  deleteArtwork
+  deleteArtwork,
+  rateArtwork,
+  getUserArtworkRating,
+  getArtworkRatingMeta
 } from '../lib/artworks';
+import { addAppNotification } from '../lib/notifications';
+
 import { getOptimizedImageUrl, getSocialShareImageUrl } from '../lib/cloudinary';
 import { 
   X, 
@@ -32,8 +38,11 @@ import {
   AlertCircle,
   RotateCw,
   Frame as FrameIcon,
-  Save
+  Save,
+  Star,
+  Bookmark
 } from 'lucide-react';
+import { isArtworkFavorite, toggleFavoriteArtwork, FAVORITE_EVENT } from '../lib/favorites';
 
 interface ArtworkDetailModalProps {
   artwork: Artwork | null;
@@ -58,6 +67,12 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const [relatedWorks, setRelatedWorks] = useState<Artwork[]>([]);
   const [likeAnimating, setLikeAnimating] = useState(false);
   const [showSocialPreview, setShowSocialPreview] = useState(false);
+  const [isFav, setIsFav] = useState(false);
+
+  // Rating system state
+  const [ratingMeta, setRatingMeta] = useState({ ratingAverage: 0, ratingCount: 0, ratingSum: 0 });
+  const [userRating, setUserRating] = useState<number | null>(null);
+  const [ratingToast, setRatingToast] = useState(false);
 
   // Interactive Frame, Rotation & Filter state
   const [activeFrame, setActiveFrame] = useState<FrameStyle>('none');
@@ -77,23 +92,70 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     setActiveFilter(artwork.filterStyle || 'normal');
     setShowConfirmDelete(false);
 
+    // Initialize rating meta and existing user rating
+    const meta = getArtworkRatingMeta(artwork);
+    setRatingMeta(meta);
+    const existing = getUserArtworkRating(artwork.id, user?.uid);
+    setUserRating(existing);
+
+    // Update client-side document head meta tags for browser extensions/sharers
+    const titleText = `${artwork.title} - بريشة الفنان ${artwork.artistName || 'فنان المعرض'} | معرض الفنون`;
+    document.title = titleText;
+
+    const setMeta = (nameOrProperty: string, content: string, isName = false) => {
+      const attr = isName ? 'name' : 'property';
+      let meta = document.querySelector(`meta[${attr}="${nameOrProperty}"]`);
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.setAttribute(attr, nameOrProperty);
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute('content', content);
+    };
+
+    const shareImg = getSocialShareImageUrl(artwork.imageUrl);
+    setMeta('og:title', `${artwork.title} - بريشة الفنان ${artwork.artistName || 'فنان المعرض'}`);
+    setMeta('og:image', shareImg);
+    setMeta('og:image:secure_url', shareImg);
+    setMeta('og:url', `${window.location.origin}/art/${artwork.id}`);
+    setMeta('twitter:title', `${artwork.title} - بريشة الفنان ${artwork.artistName || 'فنان المعرض'}`, true);
+    setMeta('twitter:image', shareImg, true);
+
+    // Check user favorite status
+    const updateFavStatus = () => {
+      setIsFav(isArtworkFavorite(artwork.id, user?.uid));
+    };
+    updateFavStatus();
+    window.addEventListener(FAVORITE_EVENT, updateFavStatus);
+
     // Track view count
-    incrementArtworkViews(artwork.id);
+    incrementArtworkViews(artwork.id).catch(() => {});
 
     // Check user like status
-    if (user) {
-      checkIfUserLikedArtwork(artwork.id, user.uid).then((liked) => setIsLiked(liked));
+    const isSampleOrWm = artwork.id.startsWith('wm-') || artwork.id.startsWith('sample-');
+    if (user && !isSampleOrWm) {
+      checkIfUserLikedArtwork(artwork.id, user.uid)
+        .then((liked) => setIsLiked(liked))
+        .catch(() => setIsLiked(false));
     } else {
       setIsLiked(false);
     }
 
     // Load comments
-    fetchArtworkComments(artwork.id).then((list) => setComments(list));
+    if (!isSampleOrWm) {
+      fetchArtworkComments(artwork.id)
+        .then((list) => setComments(list))
+        .catch(() => setComments([]));
+    } else {
+      setComments([]);
+    }
 
     // Load related artworks
-    fetchApprovedArtworks(artwork.category, '', 'newest', 6).then((list) => {
-      setRelatedWorks(list.filter((a) => a.id !== artwork.id));
-    });
+    fetchApprovedArtworks(artwork.category, '', 'newest', 6)
+      .then((list) => {
+        setRelatedWorks(list.filter((a) => a.id !== artwork.id));
+      })
+      .catch(() => setRelatedWorks([]));
 
   }, [artwork, user]);
 
@@ -132,9 +194,8 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     if (!artwork) return;
     setIsDeleting(true);
     try {
-      await deleteArtwork(artwork.id);
+      await deleteArtwork(artwork.id, artwork.imageUrl);
       onClose();
-      window.location.reload();
     } catch (err: any) {
       console.error('Error deleting artwork:', err);
       alert('حدث خطأ أثناء حذف الصورة: ' + (err?.message || 'يرجى إعادة المحاولة'));
@@ -144,7 +205,53 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     }
   };
 
+  const handleRate = async (stars: number) => {
+    if (!artwork) return;
+    const res = await rateArtwork(artwork.id, stars, user?.uid);
+    setUserRating(res.userRating);
+    setRatingMeta({
+      ratingAverage: res.ratingAverage,
+      ratingCount: res.ratingCount,
+      ratingSum: Math.round(res.ratingAverage * res.ratingCount)
+    });
+    setRatingToast(true);
+    setTimeout(() => setRatingToast(false), 2500);
+
+    const senderName = userProfile?.artistName || userProfile?.displayName || 'زائر المعرض';
+
+    // Notification for rater
+    addAppNotification({
+      userId: user?.uid || 'guest',
+      type: 'rating',
+      title: 'شكراً لتقييمك! 🌟',
+      message: `قمت بتقييم هذا العمل الفني بـ ${stars} نجوم.`,
+      artId: artwork.id,
+      artTitle: artwork.title,
+      artImageUrl: artwork.imageUrl
+    });
+
+    // Notification for artwork owner if different
+    if (artwork.userId && artwork.userId !== user?.uid) {
+      addAppNotification({
+        userId: artwork.userId,
+        type: 'rating',
+        title: 'تقييم جديد لعملك الفني! 🌟',
+        message: `قام ${senderName} بتقييم عملك الفني "${artwork.title}" بـ ${stars} نجوم.`,
+        artId: artwork.id,
+        artTitle: artwork.title,
+        artImageUrl: artwork.imageUrl,
+        senderName
+      });
+    }
+  };
+
   const shareUrl = `${window.location.origin}/art/${artwork.id}`;
+
+  const handleFavoriteToggle = async () => {
+    if (!artwork) return;
+    const newStatus = await toggleFavoriteArtwork(artwork, user?.uid);
+    setIsFav(newStatus);
+  };
 
   const handleLikeToggle = async () => {
     requireAuth('يرجى تسجيل الدخول للإعجاب بهذا العمل الفني', async () => {
@@ -159,6 +266,34 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
       try {
         await toggleLikeArtwork(artwork.id, user.uid);
+
+        if (newLikedState) {
+          const senderName = userProfile?.artistName || userProfile?.displayName || 'فنان معارض';
+          // Notification for liker
+          addAppNotification({
+            userId: user.uid,
+            type: 'like',
+            title: 'إعجاب جديد ❤️',
+            message: `أبديت إعجابك بالعمل الفني "${artwork.title}"`,
+            artId: artwork.id,
+            artTitle: artwork.title,
+            artImageUrl: artwork.imageUrl
+          });
+
+          // Notification for artwork owner
+          if (artwork.userId && artwork.userId !== user.uid) {
+            addAppNotification({
+              userId: artwork.userId,
+              type: 'like',
+              title: 'إعجاب جديد على عملك الفني! ❤️',
+              message: `قام ${senderName} بالإعجاب بعملك الفني "${artwork.title}"`,
+              artId: artwork.id,
+              artTitle: artwork.title,
+              artImageUrl: artwork.imageUrl,
+              senderName
+            });
+          }
+        }
       } catch (err) {
         // Revert on failure
         setIsLiked(!newLikedState);
@@ -174,6 +309,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     requireAuth('يرجى تسجيل الدخول لكتابة تعليق', async () => {
       if (!user || !userProfile) return;
 
+      const textToComment = commentText;
       setSubmittingComment(true);
       try {
         await addArtworkComment(
@@ -181,9 +317,39 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
           user.uid,
           userProfile.artistName || userProfile.displayName || 'فنان معارض',
           userProfile.photoURL || '',
-          commentText
+          textToComment
         );
         setCommentText('');
+
+        const senderName = userProfile.artistName || userProfile.displayName || 'فنان معارض';
+        const trimmedComment = textToComment.trim();
+
+        // Notification for commenter
+        addAppNotification({
+          userId: user.uid,
+          type: 'comment',
+          title: 'تم نشر تعليقك 💬',
+          message: `علقّت على اللوحة: "${trimmedComment.slice(0, 45)}${trimmedComment.length > 45 ? '...' : ''}"`,
+          artId: artwork.id,
+          artTitle: artwork.title,
+          artImageUrl: artwork.imageUrl
+        });
+
+        // Notification for artwork owner
+        if (artwork.userId && artwork.userId !== user.uid) {
+          addAppNotification({
+            userId: artwork.userId,
+            type: 'comment',
+            title: 'تعليق جديد على عملك الفني! 💬',
+            message: `قام ${senderName} بالتعليق على عملك الفني "${artwork.title}": "${trimmedComment.slice(0, 50)}"`,
+            artId: artwork.id,
+            artTitle: artwork.title,
+            artImageUrl: artwork.imageUrl,
+            senderName,
+            senderPhoto: userProfile.photoURL || ''
+          });
+        }
+
         // Refresh comments list
         const updated = await fetchArtworkComments(artwork.id);
         setComments(updated);
@@ -194,6 +360,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
       }
     });
   };
+
 
   const handleDeleteComment = async (commentId: string) => {
     if (!window.confirm('هل أنت تأكد من رغبتك في حذف هذا التعليق؟')) return;
@@ -232,8 +399,8 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
-        <div className="relative w-full max-w-5xl bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] overflow-hidden text-right my-auto max-h-[92vh] flex flex-col md:flex-row">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
+        <div className="relative w-full max-w-5xl bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] text-right my-auto max-h-[90vh] md:max-h-[92vh] flex flex-col md:flex-row overflow-y-auto md:overflow-hidden custom-scrollbar">
           
           {/* Close Button */}
           <button
@@ -244,7 +411,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
           </button>
 
           {/* Left / Top Side: Main Image Frame */}
-          <div className="md:w-3/5 bg-slate-950 relative flex flex-col items-center justify-between min-h-[350px] md:min-h-[520px] p-4 group">
+          <div className="md:w-3/5 bg-slate-950 relative flex flex-col items-center justify-between p-3 sm:p-4 group overflow-y-auto min-h-0 max-h-full custom-scrollbar">
             <div className="flex-1 flex items-center justify-center my-auto w-full p-2">
               <ArtworkFrame
                 src={highResUrl}
@@ -252,8 +419,8 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                 frameStyle={activeFrame}
                 filterStyle={activeFilter}
                 rotation={activeRotation}
-                className="max-h-[65vh]"
-                imgClassName="max-h-[60vh] w-auto object-contain shadow-2xl"
+                className="max-h-[45vh] md:max-h-[55vh]"
+                imgClassName="max-h-[40vh] md:max-h-[50vh] w-auto object-contain shadow-2xl"
               />
             </div>
 
@@ -354,11 +521,61 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                 ))}
               </div>
 
+              {/* Clear Delete Button Directly Under Image */}
+              {canDelete && (
+                <div className="pt-2 border-t border-white/10 w-full">
+                  {!showConfirmDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmDelete(true)}
+                      className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 active:scale-98 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all border border-rose-400/30"
+                    >
+                      <Trash2 className="w-4 h-4 text-white" />
+                      <span>حذف الصورة والعمل الفني نهائياً</span>
+                    </button>
+                  ) : (
+                    <div className="p-3 rounded-2xl bg-rose-950/95 border border-rose-500/80 text-white space-y-3 animate-in fade-in duration-150">
+                      <div className="flex items-start gap-2 text-rose-200">
+                        <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                        <p className="text-xs font-bold leading-relaxed">
+                          هل أنت متأكد من رغبتك في حذف هذه الصورة وهذا العمل الفني نهائياً؟ لن تتمكن من استرجاعه.
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-rose-800/60">
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmDelete(false)}
+                          disabled={isDeleting}
+                          className="px-3.5 py-1 rounded-xl bg-white/10 text-slate-200 text-xs font-bold hover:bg-white/20 transition-all"
+                        >
+                          إلغاء
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleExecuteDelete}
+                          disabled={isDeleting}
+                          className="px-4 py-1 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1.5"
+                        >
+                          {isDeleting ? (
+                            <span>جاري الحذف...</span>
+                          ) : (
+                            <>
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>نعم، تأكيد الحذف النهائي</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
           </div>
 
           {/* Right Side: Artwork Info & Interaction Panel */}
-          <div className="md:w-2/5 p-6 flex flex-col justify-between overflow-y-auto space-y-6">
+          <div className="md:w-2/5 p-5 sm:p-6 flex flex-col justify-between overflow-y-auto min-h-0 max-h-full space-y-6 custom-scrollbar">
             
             {/* Artist & Title Info */}
             <div className="space-y-4">
@@ -387,50 +604,8 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   <span className="text-xs font-bold px-3 py-1 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
                     {artwork.category}
                   </span>
-
-                  {canDelete && !showConfirmDelete && (
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmDelete(true)}
-                      className="px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1 shadow-md transition-all"
-                      title="حذف هذه الصورة والعمل الفني نهائياً"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      حذف الصورة
-                    </button>
-                  )}
                 </div>
               </div>
-
-              {/* Confirmation Panel for Delete */}
-              {showConfirmDelete && (
-                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200 space-y-3 animate-in fade-in duration-200">
-                  <div className="flex items-start gap-2">
-                    <Trash2 className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <p className="text-xs font-bold leading-relaxed">
-                      هل أنت متأكد من حذف هذه الصورة وهذا العمل الفني نهائيًا؟ لن تتمكن من استرجاعه بعد الحذف.
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmDelete(false)}
-                      disabled={isDeleting}
-                      className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-300 dark:hover:bg-slate-700 transition-all"
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleExecuteDelete}
-                      disabled={isDeleting}
-                      className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all flex items-center gap-1"
-                    >
-                      {isDeleting ? 'جاري الحذف...' : 'نعم، تأكيد الحذف النهائي'}
-                    </button>
-                  </div>
-                </div>
-              )}
 
               <div>
                 <h2 className="text-2xl font-bold font-serif text-slate-900 dark:text-white leading-tight">
@@ -456,6 +631,33 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                 </p>
               )}
 
+              {/* Interactive Star Rating Box */}
+              <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                    <span className="text-sm font-bold text-slate-900 dark:text-amber-100 font-serif">
+                      تقييم الزوار لهذا العمل الفني:
+                    </span>
+                  </div>
+                  {ratingToast && (
+                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-500/20 px-3 py-1 rounded-full animate-bounce">
+                      تم حفظ تقييمك بنجاح! ✨
+                    </span>
+                  )}
+                </div>
+
+                <StarRating
+                  ratingAverage={ratingMeta.ratingAverage}
+                  ratingCount={ratingMeta.ratingCount}
+                  userRating={userRating}
+                  onRate={handleRate}
+                  interactive={true}
+                  size="lg"
+                  showLabel={true}
+                />
+              </div>
+
               {/* Tags */}
               {artwork.tags && artwork.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -472,22 +674,38 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
               )}
             </div>
 
-            {/* Like & Social Share Bar */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-[var(--border-card)] space-y-3">
-              <div className="flex items-center justify-between">
-                
-                {/* Like Button */}
-                <button
-                  onClick={handleLikeToggle}
-                  className={`px-4 py-2.5 rounded-2xl font-bold text-sm flex items-center gap-2 transition-all ${
-                    isLiked
-                      ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'
-                      : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-600'
-                  } ${likeAnimating ? 'scale-110' : ''}`}
-                >
-                  <Heart className={`w-5 h-5 ${isLiked ? 'fill-white' : 'text-rose-500'}`} />
-                  <span>{likesCount} إعجاب</span>
-                </button>
+              {/* Like & Favorite & Social Share Bar */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-[var(--border-card)] space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  
+                  <div className="flex items-center gap-2">
+                    {/* Like Button */}
+                    <button
+                      onClick={handleLikeToggle}
+                      className={`px-3.5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all ${
+                        isLiked
+                          ? 'bg-rose-500 text-white shadow-lg shadow-rose-500/30'
+                          : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600 hover:bg-rose-50 dark:hover:bg-rose-950/20 hover:text-rose-600'
+                      } ${likeAnimating ? 'scale-110' : ''}`}
+                    >
+                      <Heart className={`w-4 h-4 sm:w-5 sm:h-5 ${isLiked ? 'fill-white' : 'text-rose-500'}`} />
+                      <span>{likesCount}</span>
+                    </button>
+
+                    {/* Bookmark / Favorite Button */}
+                    <button
+                      onClick={handleFavoriteToggle}
+                      className={`px-3.5 py-2.5 rounded-2xl font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all border ${
+                        isFav
+                          ? 'bg-amber-500 text-white border-amber-400 shadow-md scale-105'
+                          : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-amber-50 dark:hover:bg-amber-950/20 hover:text-amber-600'
+                      }`}
+                      title={isFav ? 'إزالة من القائمة المفضلة' : 'حفظ في القائمة المفضلة'}
+                    >
+                      <Bookmark className={`w-4 h-4 sm:w-5 sm:h-5 ${isFav ? 'fill-white text-white' : 'text-amber-500'}`} />
+                      <span>{isFav ? 'في المفضلة 🔖' : 'حفظ بالمفضلة'}</span>
+                    </button>
+                  </div>
 
                 <div className="flex items-center gap-2">
                   {/* Toggle Social Preview Card Button */}
@@ -585,6 +803,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                       <img
                         src={getSocialShareImageUrl(artwork.imageUrl)}
                         alt={artwork.title}
+                        referrerPolicy="no-referrer"
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded-lg border border-white/10 flex items-center gap-1">
@@ -692,6 +911,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
           <img
             src={artwork.imageUrl}
             alt={artwork.title}
+            referrerPolicy="no-referrer"
             className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
           />
         </div>

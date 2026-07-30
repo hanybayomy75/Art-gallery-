@@ -114,6 +114,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
   useEffect(() => {
     if (isAdmin) {
       loadData();
+      const handleRefresh = () => loadData();
+      window.addEventListener('artwork_changed', handleRefresh);
+      window.addEventListener('artwork_uploaded', handleRefresh);
+      return () => {
+        window.removeEventListener('artwork_changed', handleRefresh);
+        window.removeEventListener('artwork_uploaded', handleRefresh);
+      };
     }
   }, [isAdmin, isOwner]);
 
@@ -150,11 +157,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
     }
   };
 
-  const handleDelete = async (artId: string) => {
+  const handleDelete = async (artId: string, imageUrl?: string) => {
     try {
-      await deleteArtwork(artId);
-      setPendingWorks((prev) => prev.filter((a) => a.id !== artId));
-      setAllWorks((prev) => prev.filter((a) => a.id !== artId));
+      await deleteArtwork(artId, imageUrl);
+      setPendingWorks((prev) => prev.filter((a) => a.id !== artId && a.imageUrl !== imageUrl));
+      setAllWorks((prev) => prev.filter((a) => a.id !== artId && a.imageUrl !== imageUrl));
       setDeletingArtId(null);
     } catch (err: any) {
       console.error('Error deleting artwork:', err);

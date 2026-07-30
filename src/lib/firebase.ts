@@ -61,29 +61,52 @@ export const facebookProvider = new FacebookAuthProvider();
 export const SYSTEM_OWNER_EMAIL = 'hany.bayomy75@gmail.com';
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
+  if (!uid) return null;
+  
+  let localProfile: UserProfile | null = null;
+  try {
+    const localRaw = localStorage.getItem(`user_profile_${uid}`);
+    if (localRaw) localProfile = JSON.parse(localRaw);
+  } catch {
+    // ignore
+  }
+
   try {
     const userDoc = await getDoc(doc(db, 'users', uid));
     if (userDoc.exists()) {
-      return userDoc.data() as UserProfile;
+      const profile = userDoc.data() as UserProfile;
+      try {
+        localStorage.setItem(`user_profile_${uid}`, JSON.stringify(profile));
+      } catch {}
+      return profile;
     }
-    return null;
   } catch (error: any) {
     try {
       const cacheDoc = await getDocFromCache(doc(db, 'users', uid));
       if (cacheDoc.exists()) {
-        return cacheDoc.data() as UserProfile;
+        const profile = cacheDoc.data() as UserProfile;
+        try {
+          localStorage.setItem(`user_profile_${uid}`, JSON.stringify(profile));
+        } catch {}
+        return profile;
       }
     } catch {
       // Ignore cache error
     }
-    console.warn('Notice: Offline or network issue fetching profile:', error?.message || error);
-    return null;
+    console.warn('Notice: Firestore offline while fetching user profile:', error?.message || error);
   }
+
+  return localProfile;
 }
 
 export async function createOrUpdateUserProfile(user: FirebaseUser, extraData?: Partial<UserProfile>): Promise<UserProfile> {
   const userRef = doc(db, 'users', user.uid);
   let existingData: any = null;
+
+  try {
+    const localRaw = localStorage.getItem(`user_profile_${user.uid}`);
+    if (localRaw) existingData = JSON.parse(localRaw);
+  } catch {}
 
   try {
     const existing = await getDoc(userRef);
@@ -116,12 +139,16 @@ export async function createOrUpdateUserProfile(user: FirebaseUser, extraData?: 
     displayName: extraData?.displayName || existingData?.displayName || user.displayName || user.email?.split('@')[0] || 'فنان معارض',
     artistName: extraData?.artistName || existingData?.artistName || user.displayName || user.email?.split('@')[0] || 'فنان معارض',
     photoURL: extraData?.photoURL || existingData?.photoURL || user.photoURL || '',
-    bio: extraData?.bio || existingData?.bio || '',
+    bio: extraData?.bio !== undefined ? extraData.bio : (existingData?.bio || ''),
     role: role,
     themePreset: extraData?.themePreset || existingData?.themePreset || 'classic',
     themeMode: extraData?.themeMode || existingData?.themeMode || 'light',
     createdAt: existingData?.createdAt || new Date().toISOString()
   };
+
+  try {
+    localStorage.setItem(`user_profile_${user.uid}`, JSON.stringify(profileData));
+  } catch {}
 
   try {
     await setDoc(userRef, profileData, { merge: true });

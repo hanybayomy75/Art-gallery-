@@ -77,6 +77,8 @@ export const AuthModal: React.FC = () => {
       console.error('Google auth error detail:', err);
       if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
         setError(`خطأ النطاق غير المصرح به (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) يحتاج للإضافة في قائمة Authorized Domains بـ Firebase Console. يمكنك نسخته أدناه، أو تسجيل الدخول بالبريد الإلكتروني مباشرة.`);
+      } else if (err.code === 'auth/network-request-failed' || err.message?.includes('network-request-failed')) {
+        setError('تعذر الاتصال بخدمة تسجيل Google (auth/network-request-failed). يرجى استخدام البريد الإلكتروني وكلمة المرور أدناه للتسجيل والدخول مباشرة.');
       } else if (err.code === 'auth/popup-blocked') {
         setError('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة ثم المحاولة مجددًا.');
       } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
@@ -113,8 +115,8 @@ export const AuthModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] p-6 sm:p-8 overflow-hidden text-right">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+      <div className="relative w-full max-w-md bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] p-5 sm:p-8 text-right my-auto max-h-[90vh] overflow-y-auto custom-scrollbar">
         
         {/* Close Button */}
         <button

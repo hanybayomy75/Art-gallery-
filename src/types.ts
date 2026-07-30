@@ -54,6 +54,9 @@ export interface Artwork {
   likesCount: number;
   commentsCount: number;
   viewsCount?: number;
+  ratingAverage?: number;
+  ratingCount?: number;
+  ratingSum?: number;
   rotation?: number; // 0, 90, 180, 270 degrees
   frameStyle?: FrameStyle;
   filterStyle?: FilterStyle;
@@ -95,4 +98,20 @@ export interface ContactMessage {
   userId?: string;
 }
 
-export type SortOption = 'newest' | 'likes' | 'comments' | 'featured';
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: 'like' | 'comment' | 'rating' | 'system';
+  title: string;
+  message: string;
+  artId?: string;
+  artTitle?: string;
+  artImageUrl?: string;
+  senderName?: string;
+  senderPhoto?: string;
+  read: boolean;
+  createdAt: string;
+}
+
+
+export type SortOption = 'newest' | 'likes' | 'comments' | 'featured' | 'rating';

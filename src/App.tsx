@@ -7,11 +7,13 @@ import { ArtworkDetailModal } from './components/ArtworkDetailModal';
 import { UploadModal } from './components/UploadModal';
 import { AuthModal } from './components/AuthModal';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
+import { NotificationToastContainer } from './components/NotificationToastContainer';
 import { Footer } from './components/Footer';
 import { MyProfilePage } from './pages/MyProfilePage';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { Artwork } from './types';
 import { fetchArtworkById, fetchApprovedArtworks, DEFAULT_CATEGORIES } from './lib/artworks';
+
 
 function MainApp() {
   const [activeView, setActiveView] = useState<'home' | 'profile' | 'admin'>('home');
@@ -78,6 +80,14 @@ function MainApp() {
     window.history.pushState({}, '', '/');
   };
 
+  const handleSelectArtworkById = (artId: string) => {
+    fetchArtworkById(artId).then((art) => {
+      if (art) {
+        handleSelectArtwork(art);
+      }
+    });
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200" dir="rtl">
       
@@ -87,7 +97,9 @@ function MainApp() {
         setActiveView={setActiveView} 
         selectedCategory={selectedCategory}
         onSelectCategory={handleSelectCategory}
+        onSelectArtwork={handleSelectArtworkById}
       />
+
 
       {/* Main Content Area */}
       <main className="flex-1">
@@ -136,6 +148,8 @@ function MainApp() {
       <UploadModal onSuccess={() => setActiveView('profile')} />
       <AuthModal />
       <ThemeSettingsModal />
+      <NotificationToastContainer />
+
 
     </div>
   );

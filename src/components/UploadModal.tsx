@@ -16,7 +16,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState(DEFAULT_CATEGORIES[1]); // Default 'لوحات فنية'
+  const [category, setCategory] = useState('لوحات فنية');
   const [description, setDescription] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [artistName, setArtistName] = useState(userProfile?.artistName || userProfile?.displayName || '');
@@ -113,26 +113,30 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const targetStatus: ArtworkStatus = isAdminOrOwner ? 'approved' : 'pending';
+      const targetStatus: ArtworkStatus = 'approved';
 
-      for (let i = 0; i < files.length; i++) {
-        setUploadingIndex(i + 1);
-        const currentFile = files[i];
+      const progressArray = new Array(files.length).fill(0);
 
-        // Upload file to Cloudinary
+      const uploadTasks = files.map(async (currentFile, index) => {
+        // Upload file to Cloudinary in parallel
         const cloudRes = await uploadImageToCloudinary(currentFile, (percent) => {
-          const overallPercent = Math.round(((i + percent / 100) / files.length) * 100);
-          setUploadProgress(Math.min(98, Math.max(5, overallPercent)));
+          progressArray[index] = percent;
+          const avgPercent = Math.round(progressArray.reduce((a, b) => a + b, 0) / files.length);
+          // Scale from 5% to 92% during byte transfer
+          const calculatedProgress = 5 + Math.round((avgPercent / 100) * 87);
+          setUploadProgress(calculatedProgress);
         });
+
+        setUploadProgress(96);
 
         // Determine item title
         let itemTitle = title.trim();
         if (files.length > 1) {
-          itemTitle = `${title.trim()} (${i + 1})`;
+          itemTitle = `${title.trim()} (${index + 1})`;
         }
 
-        // Save artwork document in Firestore
-        await createArtwork({
+        // Save artwork document in Firestore/LocalStorage
+        return createArtwork({
           title: itemTitle,
           description: description.trim(),
           category,
@@ -147,23 +151,17 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
           frameStyle,
           filterStyle
         });
-      }
+      });
+
+      await Promise.all(uploadTasks);
 
       setUploadProgress(100);
 
-      if (isAdminOrOwner) {
-        setSuccessMsg(
-          files.length === 1
-            ? 'تم نشر العمل الفني فوراً وبشكل مباشر في المعرض العام!'
-            : `تم نشر جميع الأعمال الفنية (${files.length} أعمال) فوراً وبشكل مباشر في المعرض العام!`
-        );
-      } else {
-        setSuccessMsg(
-          files.length === 1
-            ? 'تم رفع عملك الفني بنجاح! سينتقل العمل لمراجعة الإدارة وسينشر في المعرض العام فور اعتماده.'
-            : `تم رفع ${files.length} أعمال بنجاح! ستنتقل لمراجعة الإدارة وستُنشر في المعرض العام فور اعتمادها.`
-        );
-      }
+      setSuccessMsg(
+        files.length === 1
+          ? 'تم نشر العمل الفني بنجاح وبشكل مباشر في المعرض العام!'
+          : `تم نشر جميع الأعمال الفنية (${files.length} أعمال) بنجاح وبشكل مباشر في المعرض العام!`
+      );
 
       setTimeout(() => {
         setIsUploadModalOpen(false);
@@ -184,6 +182,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
     setFiles([]);
     setPreviewUrls([]);
     setTitle('');
+    setCategory('لوحات فنية');
     setDescription('');
     setTagsInput('');
     setUploadProgress(0);
@@ -192,27 +191,37 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
     setSuccessMsg(null);
   };
 
-  const filteredCategories = DEFAULT_CATEGORIES.filter((c) => c !== 'الكل');
+  const filteredCategories = DEFAULT_CATEGORIES.filter((c) => c !== 'الكل' && c !== 'أعمال الفنانين المرفوعة');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] p-6 sm:p-8 text-right my-8">
+    <div 
+      className="fixed inset-0 z-50 flex justify-center items-start sm:items-center p-3 sm:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isUploading) {
+          setIsUploadModalOpen(false);
+          resetForm();
+        }
+      }}
+    >
+      <div className="relative w-full max-w-2xl bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] p-4 sm:p-7 text-right my-auto overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Close Button */}
         <button
+          type="button"
           onClick={() => {
             if (!isUploading) {
               setIsUploadModalOpen(false);
               resetForm();
             }
           }}
-          className="absolute top-5 left-5 p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+          className="absolute top-4 left-4 p-2.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 transition-all z-20 shadow-sm"
+          title="إغلاق النافذة"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Modal Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 border-b border-[var(--border-card)] pb-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-[var(--border-card)] pb-4 shrink-0 pl-10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] flex items-center justify-center shrink-0">
               <Upload className="w-5 h-5" />
@@ -231,23 +240,26 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
           )}
         </div>
 
-        {/* Success Alert */}
-        {successMsg && (
-          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
-            <span className="font-semibold">{successMsg}</span>
-          </div>
-        )}
+        {/* Scrollable Container */}
+        <div className="overflow-y-auto pr-1.5 space-y-5 flex-1 min-h-0 custom-scrollbar">
 
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-6 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
-            <span>{error}</span>
-          </div>
-        )}
+          {/* Success Alert */}
+          {successMsg && (
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+              <span className="font-semibold">{successMsg}</span>
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Error Alert */}
+          {error && (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 shrink-0 text-rose-600" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5 pb-2">
           {/* File Drag and Drop Zone / Previews */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -485,6 +497,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
             )}
           </button>
         </form>
+        </div>
 
       </div>
     </div>

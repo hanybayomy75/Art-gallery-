@@ -84,6 +84,8 @@ export const ArtworkFrame: React.FC<ArtworkFrameProps> = ({
                   src={src}
                   alt={alt}
                   onLoad={onLoad}
+                  onError={onLoad}
+                  referrerPolicy="no-referrer"
                   style={combinedImgStyle}
                   className={`max-w-full max-h-full object-contain ${imgClassName}`}
                 />
@@ -101,6 +103,8 @@ export const ArtworkFrame: React.FC<ArtworkFrameProps> = ({
                   src={src}
                   alt={alt}
                   onLoad={onLoad}
+                  onError={onLoad}
+                  referrerPolicy="no-referrer"
                   style={combinedImgStyle}
                   className={`max-w-full max-h-full object-contain ${imgClassName}`}
                 />
@@ -118,6 +122,8 @@ export const ArtworkFrame: React.FC<ArtworkFrameProps> = ({
                   src={src}
                   alt={alt}
                   onLoad={onLoad}
+                  onError={onLoad}
+                  referrerPolicy="no-referrer"
                   style={combinedImgStyle}
                   className={`max-w-full max-h-full object-contain ${imgClassName}`}
                 />
@@ -135,6 +141,8 @@ export const ArtworkFrame: React.FC<ArtworkFrameProps> = ({
                   src={src}
                   alt={alt}
                   onLoad={onLoad}
+                  onError={onLoad}
+                  referrerPolicy="no-referrer"
                   style={combinedImgStyle}
                   className={`max-w-full max-h-full object-contain ${imgClassName}`}
                 />
@@ -152,6 +160,8 @@ export const ArtworkFrame: React.FC<ArtworkFrameProps> = ({
                   src={src}
                   alt={alt}
                   onLoad={onLoad}
+                  onError={onLoad}
+                  referrerPolicy="no-referrer"
                   style={combinedImgStyle}
                   className={`max-w-full max-h-full object-contain ${imgClassName}`}
                 />
@@ -169,6 +179,8 @@ export const ArtworkFrame: React.FC<ArtworkFrameProps> = ({
                   src={src}
                   alt={alt}
                   onLoad={onLoad}
+                  onError={onLoad}
+                  referrerPolicy="no-referrer"
                   style={combinedImgStyle}
                   className={`max-w-full max-h-full object-contain ${imgClassName}`}
                 />
@@ -185,6 +197,8 @@ export const ArtworkFrame: React.FC<ArtworkFrameProps> = ({
               src={src}
               alt={alt}
               onLoad={onLoad}
+              onError={onLoad}
+              referrerPolicy="no-referrer"
               style={combinedImgStyle}
               className={`max-w-full max-h-full object-contain ${imgClassName}`}
             />

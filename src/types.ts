@@ -45,6 +45,7 @@ export interface Artwork {
   imageUrl: string;
   cloudinaryPublicId?: string;
   artistName: string;
+  artistEmail?: string;
   userId: string;
   userName: string;
   userPhoto?: string;

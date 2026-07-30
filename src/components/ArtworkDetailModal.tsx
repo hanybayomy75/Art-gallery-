@@ -18,6 +18,7 @@ import {
   getArtworkRatingMeta
 } from '../lib/artworks';
 import { addAppNotification } from '../lib/notifications';
+import { sendEmailNotification, getArtistEmailSettings } from '../lib/emailService';
 
 import { getOptimizedImageUrl, getSocialShareImageUrl } from '../lib/cloudinary';
 import { 
@@ -242,6 +243,22 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
         artImageUrl: artwork.imageUrl,
         senderName
       });
+
+      // Send offline email summary to artist
+      const targetSettings = getArtistEmailSettings(artwork.userId);
+      const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
+      if (targetSettings.enabled && targetSettings.notifyRatings && targetEmail) {
+        sendEmailNotification({
+          artistEmail: targetEmail,
+          artistName: artwork.artistName || 'الفنان',
+          interactionType: 'rating',
+          senderName,
+          artTitle: artwork.title,
+          artId: artwork.id,
+          artImageUrl: artwork.imageUrl,
+          messageContent: `قام ${senderName} بتزويد عملك الفني "${artwork.title}" بتقييم قدره ${stars} نجوم! ⭐`
+        }).catch(() => {});
+      }
     }
   };
 
@@ -251,6 +268,24 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     if (!artwork) return;
     const newStatus = await toggleFavoriteArtwork(artwork, user?.uid);
     setIsFav(newStatus);
+
+    if (newStatus && artwork.userId && artwork.userId !== user?.uid) {
+      const senderName = userProfile?.artistName || userProfile?.displayName || 'مستكشف الفنون';
+      const targetSettings = getArtistEmailSettings(artwork.userId);
+      const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
+      if (targetSettings.enabled && targetSettings.notifyFavorites && targetEmail) {
+        sendEmailNotification({
+          artistEmail: targetEmail,
+          artistName: artwork.artistName || 'الفنان',
+          interactionType: 'favorite',
+          senderName,
+          artTitle: artwork.title,
+          artId: artwork.id,
+          artImageUrl: artwork.imageUrl,
+          messageContent: `قام ${senderName} بحفظ لوحتك "${artwork.title}" في قائمته المفضلة! 🔖`
+        }).catch(() => {});
+      }
+    }
   };
 
   const handleLikeToggle = async () => {
@@ -292,6 +327,22 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
               artImageUrl: artwork.imageUrl,
               senderName
             });
+
+            // Send offline email summary to artist
+            const targetSettings = getArtistEmailSettings(artwork.userId);
+            const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
+            if (targetSettings.enabled && targetSettings.notifyLikes && targetEmail) {
+              sendEmailNotification({
+                artistEmail: targetEmail,
+                artistName: artwork.artistName || 'الفنان',
+                interactionType: 'like',
+                senderName,
+                artTitle: artwork.title,
+                artId: artwork.id,
+                artImageUrl: artwork.imageUrl,
+                messageContent: `أبدى ${senderName} إعجابه بعملائك الفني الرائع "${artwork.title}" ❤️`
+              }).catch(() => {});
+            }
           }
         }
       } catch (err) {
@@ -348,7 +399,24 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
             senderName,
             senderPhoto: userProfile.photoURL || ''
           });
+
+          // Send offline email summary to artist
+          const targetSettings = getArtistEmailSettings(artwork.userId);
+          const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
+          if (targetSettings.enabled && targetSettings.notifyComments && targetEmail) {
+            sendEmailNotification({
+              artistEmail: targetEmail,
+              artistName: artwork.artistName || 'الفنان',
+              interactionType: 'comment',
+              senderName,
+              artTitle: artwork.title,
+              artId: artwork.id,
+              artImageUrl: artwork.imageUrl,
+              messageContent: `كتب ${senderName} تعليقاً جديداً: "${trimmedComment}"`
+            }).catch(() => {});
+          }
         }
+
 
         // Refresh comments list
         const updated = await fetchArtworkComments(artwork.id);

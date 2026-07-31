@@ -5,10 +5,12 @@ interface StarRatingProps {
   ratingAverage?: number;
   ratingCount?: number;
   userRating?: number | null;
+  ratingDistribution?: Record<number, number>;
   onRate?: (stars: number) => void;
   interactive?: boolean;
   size?: 'sm' | 'md' | 'lg';
   showLabel?: boolean;
+  showDistribution?: boolean;
   className?: string;
 }
 
@@ -16,10 +18,12 @@ export const StarRating: React.FC<StarRatingProps> = ({
   ratingAverage = 0,
   ratingCount = 0,
   userRating = null,
+  ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
   onRate,
   interactive = false,
   size = 'md',
   showLabel = true,
+  showDistribution = true,
   className = ''
 }) => {
   const [hoverRating, setHoverRating] = useState<number | null>(null);
@@ -54,8 +58,8 @@ export const StarRating: React.FC<StarRatingProps> = ({
   };
 
   return (
-    <div className={`flex flex-col gap-1.5 ${className}`}>
-      <div className="flex items-center gap-1.5 flex-wrap">
+    <div className={`flex flex-col gap-2 ${className}`}>
+      <div className="flex items-center gap-2 flex-wrap">
         {/* Star Buttons */}
         <div className="flex items-center gap-1 dir-ltr" dir="ltr">
           {[1, 2, 3, 4, 5].map((starIndex) => {
@@ -120,6 +124,33 @@ export const StarRating: React.FC<StarRatingProps> = ({
               انقر على النجوم لإضافة تقييمك لهذا العمل الفني
             </span>
           )}
+        </div>
+      )}
+
+      {/* 1-5 Star Breakdown Progress Bars */}
+      {showDistribution && ratingCount > 0 && (
+        <div className="pt-2 border-t border-amber-500/20 space-y-1.5">
+          {[5, 4, 3, 2, 1].map((starNum) => {
+            const count = ratingDistribution[starNum] || 0;
+            const percent = ratingCount > 0 ? Math.round((count / ratingCount) * 100) : 0;
+            return (
+              <div key={starNum} className="flex items-center gap-2 text-[11px]">
+                <span className="w-12 text-slate-600 dark:text-slate-400 font-medium shrink-0 flex items-center gap-1">
+                  <span>{starNum}</span>
+                  <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                </span>
+                <div className="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-300"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <span className="w-8 text-left text-slate-500 text-[10px] font-bold shrink-0">
+                  {count}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

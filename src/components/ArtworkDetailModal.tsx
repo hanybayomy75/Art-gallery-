@@ -71,7 +71,12 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const [isFav, setIsFav] = useState(false);
 
   // Rating system state
-  const [ratingMeta, setRatingMeta] = useState({ ratingAverage: 0, ratingCount: 0, ratingSum: 0 });
+  const [ratingMeta, setRatingMeta] = useState<{
+    ratingAverage: number;
+    ratingCount: number;
+    ratingSum: number;
+    ratingDistribution: Record<number, number>;
+  }>({ ratingAverage: 0, ratingCount: 0, ratingSum: 0, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
   const [userRating, setUserRating] = useState<number | null>(null);
   const [ratingToast, setRatingToast] = useState(false);
 
@@ -208,40 +213,31 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
   const handleRate = async (stars: number) => {
     if (!artwork) return;
-    const res = await rateArtwork(artwork.id, stars, user?.uid);
+    const res = await rateArtwork(artwork.id, stars, user?.uid, userProfile || undefined);
     setUserRating(res.userRating);
     setRatingMeta({
       ratingAverage: res.ratingAverage,
       ratingCount: res.ratingCount,
-      ratingSum: Math.round(res.ratingAverage * res.ratingCount)
+      ratingSum: Math.round(res.ratingAverage * res.ratingCount),
+      ratingDistribution: res.ratingDistribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
     });
     setRatingToast(true);
     setTimeout(() => setRatingToast(false), 2500);
 
     const senderName = userProfile?.artistName || userProfile?.displayName || 'زائر المعرض';
 
-    // Notification for rater
-    addAppNotification({
-      userId: user?.uid || 'guest',
-      type: 'rating',
-      title: 'شكراً لتقييمك! 🌟',
-      message: `قمت بتقييم هذا العمل الفني بـ ${stars} نجوم.`,
-      artId: artwork.id,
-      artTitle: artwork.title,
-      artImageUrl: artwork.imageUrl
-    });
-
     // Notification for artwork owner if different
     if (artwork.userId && artwork.userId !== user?.uid) {
       addAppNotification({
-        userId: artwork.userId,
+        recipientUserId: artwork.userId,
+        actorUserId: user?.uid,
+        actorName: senderName,
         type: 'rating',
         title: 'تقييم جديد لعملك الفني! 🌟',
         message: `قام ${senderName} بتقييم عملك الفني "${artwork.title}" بـ ${stars} نجوم.`,
         artId: artwork.id,
         artTitle: artwork.title,
-        artImageUrl: artwork.imageUrl,
-        senderName
+        artImageUrl: artwork.imageUrl
       });
 
       // Send offline email summary to artist
@@ -266,7 +262,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
   const handleFavoriteToggle = async () => {
     if (!artwork) return;
-    const newStatus = await toggleFavoriteArtwork(artwork, user?.uid);
+    const newStatus = await toggleFavoriteArtwork(artwork, user?.uid, userProfile || undefined);
     setIsFav(newStatus);
 
     if (newStatus && artwork.userId && artwork.userId !== user?.uid) {
@@ -300,49 +296,23 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
       setLikesCount((prev) => (newLikedState ? prev + 1 : Math.max(0, prev - 1)));
 
       try {
-        await toggleLikeArtwork(artwork.id, user.uid);
+        await toggleLikeArtwork(artwork.id, user.uid, userProfile || undefined);
 
-        if (newLikedState) {
+        if (newLikedState && artwork.userId && artwork.userId !== user.uid) {
           const senderName = userProfile?.artistName || userProfile?.displayName || 'فنان معارض';
-          // Notification for liker
-          addAppNotification({
-            userId: user.uid,
-            type: 'like',
-            title: 'إعجاب جديد ❤️',
-            message: `أبديت إعجابك بالعمل الفني "${artwork.title}"`,
-            artId: artwork.id,
-            artTitle: artwork.title,
-            artImageUrl: artwork.imageUrl
-          });
-
-          // Notification for artwork owner
-          if (artwork.userId && artwork.userId !== user.uid) {
-            addAppNotification({
-              userId: artwork.userId,
-              type: 'like',
-              title: 'إعجاب جديد على عملك الفني! ❤️',
-              message: `قام ${senderName} بالإعجاب بعملك الفني "${artwork.title}"`,
-              artId: artwork.id,
+          const targetSettings = getArtistEmailSettings(artwork.userId);
+          const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
+          if (targetSettings.enabled && targetSettings.notifyLikes && targetEmail) {
+            sendEmailNotification({
+              artistEmail: targetEmail,
+              artistName: artwork.artistName || 'الفنان',
+              interactionType: 'like',
+              senderName,
               artTitle: artwork.title,
+              artId: artwork.id,
               artImageUrl: artwork.imageUrl,
-              senderName
-            });
-
-            // Send offline email summary to artist
-            const targetSettings = getArtistEmailSettings(artwork.userId);
-            const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
-            if (targetSettings.enabled && targetSettings.notifyLikes && targetEmail) {
-              sendEmailNotification({
-                artistEmail: targetEmail,
-                artistName: artwork.artistName || 'الفنان',
-                interactionType: 'like',
-                senderName,
-                artTitle: artwork.title,
-                artId: artwork.id,
-                artImageUrl: artwork.imageUrl,
-                messageContent: `أبدى ${senderName} إعجابه بعملائك الفني الرائع "${artwork.title}" ❤️`
-              }).catch(() => {});
-            }
+              messageContent: `أبدى ${senderName} إعجابه بعملائك الفني الرائع "${artwork.title}" ❤️`
+            }).catch(() => {});
           }
         }
       } catch (err) {
@@ -375,29 +345,19 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
         const senderName = userProfile.artistName || userProfile.displayName || 'فنان معارض';
         const trimmedComment = textToComment.trim();
 
-        // Notification for commenter
-        addAppNotification({
-          userId: user.uid,
-          type: 'comment',
-          title: 'تم نشر تعليقك 💬',
-          message: `علقّت على اللوحة: "${trimmedComment.slice(0, 45)}${trimmedComment.length > 45 ? '...' : ''}"`,
-          artId: artwork.id,
-          artTitle: artwork.title,
-          artImageUrl: artwork.imageUrl
-        });
-
         // Notification for artwork owner
         if (artwork.userId && artwork.userId !== user.uid) {
           addAppNotification({
-            userId: artwork.userId,
+            recipientUserId: artwork.userId,
+            actorUserId: user.uid,
+            actorName: senderName,
+            actorPhotoURL: userProfile.photoURL || '',
             type: 'comment',
             title: 'تعليق جديد على عملك الفني! 💬',
             message: `قام ${senderName} بالتعليق على عملك الفني "${artwork.title}": "${trimmedComment.slice(0, 50)}"`,
             artId: artwork.id,
             artTitle: artwork.title,
-            artImageUrl: artwork.imageUrl,
-            senderName,
-            senderPhoto: userProfile.photoURL || ''
+            artImageUrl: artwork.imageUrl
           });
 
           // Send offline email summary to artist
@@ -719,10 +679,12 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   ratingAverage={ratingMeta.ratingAverage}
                   ratingCount={ratingMeta.ratingCount}
                   userRating={userRating}
+                  ratingDistribution={ratingMeta.ratingDistribution}
                   onRate={handleRate}
                   interactive={true}
                   size="lg"
                   showLabel={true}
+                  showDistribution={true}
                 />
               </div>
 

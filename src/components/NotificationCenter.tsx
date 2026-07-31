@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   getUserNotifications, 
+  fetchUserNotificationsFromFirestore,
   markNotificationAsRead, 
   markAllNotificationsAsRead, 
   clearUserNotifications, 
@@ -22,9 +23,14 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onSelect
 
   const activeUserId = user?.uid || 'guest';
 
-  const loadNotifs = () => {
-    const list = getUserNotifications(activeUserId);
-    setNotifications(list);
+  const loadNotifs = async () => {
+    if (user?.uid) {
+      const list = await fetchUserNotificationsFromFirestore(user.uid);
+      setNotifications(list);
+    } else {
+      const list = getUserNotifications('guest');
+      setNotifications(list);
+    }
   };
 
   useEffect(() => {

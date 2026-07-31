@@ -1,5 +1,5 @@
 import { db } from './firebase';
-import { doc, getDoc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, setDoc, deleteDoc, increment } from 'firebase/firestore';
 import { Artwork } from '../types';
 import { fetchArtworkById, fetchApprovedArtworks } from './artworks';
 import { triggerToast, addAppNotification } from './notifications';
@@ -49,7 +49,11 @@ export function isArtworkFavorite(artId: string, userId?: string): boolean {
   return ids.includes(artId);
 }
 
-export async function toggleFavoriteArtwork(artwork: Artwork, userId?: string): Promise<boolean> {
+export async function toggleFavoriteArtwork(
+  artwork: Artwork, 
+  userId?: string,
+  userProfile?: { displayName?: string; artistName?: string; photoURL?: string }
+): Promise<boolean> {
   const key = userId || 'guest';
   const map = getLocalFavorites();
   const currentIds = map[key] || [];
@@ -76,6 +80,16 @@ export async function toggleFavoriteArtwork(artwork: Artwork, userId?: string): 
           favorites: newFavStatus ? arrayUnion(artwork.id) : arrayRemove(artwork.id)
         });
       }
+
+      const artRef = doc(db, 'artworks', artwork.id);
+      const artFavRef = doc(db, 'artworks', artwork.id, 'favorites', userId);
+      if (newFavStatus) {
+        await setDoc(artFavRef, { userId, createdAt: new Date().toISOString() });
+        await updateDoc(artRef, { favoritesCount: increment(1) }).catch(() => {});
+      } else {
+        await deleteDoc(artFavRef).catch(() => {});
+        await updateDoc(artRef, { favoritesCount: increment(-1) }).catch(() => {});
+      }
     } catch (e) {
       console.warn('Notice: Favorite synced locally (firestore sync skipped):', e);
     }
@@ -91,15 +105,22 @@ export async function toggleFavoriteArtwork(artwork: Artwork, userId?: string): 
       artImageUrl: artwork.imageUrl
     });
 
-    addAppNotification({
-      userId: key,
-      type: 'rating',
-      title: 'حفظ في المفضلة 🔖',
-      message: `أضفت اللوحة "${artwork.title}" إلى لوحاتك المفضلة`,
-      artId: artwork.id,
-      artTitle: artwork.title,
-      artImageUrl: artwork.imageUrl
-    });
+    // Notify artwork creator (recipientUserId = artwork.userId, actorUserId = userId)
+    if (artwork.userId && userId && userId !== 'guest') {
+      const senderName = userProfile?.artistName || userProfile?.displayName || 'مستكشف الفنون';
+      await addAppNotification({
+        recipientUserId: artwork.userId,
+        actorUserId: userId,
+        actorName: senderName,
+        actorPhotoURL: userProfile?.photoURL || '',
+        type: 'favorite',
+        title: 'إضافة للمفضلة 🔖',
+        message: `قام ${senderName} بإضافة عملك "${artwork.title}" إلى قائمته المفضلة ⭐`,
+        artId: artwork.id,
+        artTitle: artwork.title,
+        artImageUrl: artwork.imageUrl
+      });
+    }
   } else {
     triggerToast({
       type: 'system',
@@ -115,12 +136,10 @@ export async function fetchFavoriteArtworks(userId?: string): Promise<Artwork[]>
   const ids = getUserFavoriteIds(userId);
   if (ids.length === 0) return [];
 
-  // Fetch approved artworks first for speed
   try {
     const allApproved = await fetchApprovedArtworks();
     const approvedFavs = allApproved.filter((art) => ids.includes(art.id));
     
-    // Check if any missing IDs need direct fetching
     const foundIds = new Set(approvedFavs.map((a) => a.id));
     const missingIds = ids.filter((id) => !foundIds.has(id));
 

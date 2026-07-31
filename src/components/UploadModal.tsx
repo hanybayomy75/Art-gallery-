@@ -113,7 +113,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
         .map((t) => t.trim())
         .filter(Boolean);
 
-      const targetStatus: ArtworkStatus = 'approved';
+      const targetStatus: ArtworkStatus = isAdminOrOwner ? 'approved' : 'pending';
 
       const progressArray = new Array(files.length).fill(0);
 
@@ -157,11 +157,19 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
 
       setUploadProgress(100);
 
-      setSuccessMsg(
-        files.length === 1
-          ? 'تم نشر العمل الفني بنجاح وبشكل مباشر في المعرض العام!'
-          : `تم نشر جميع الأعمال الفنية (${files.length} أعمال) بنجاح وبشكل مباشر في المعرض العام!`
-      );
+      if (targetStatus === 'approved') {
+        setSuccessMsg(
+          files.length === 1
+            ? 'تم نشر العمل الفني بنجاح وبشكل مباشر في المعرض العام!'
+            : `تم نشر جميع الأعمال الفنية (${files.length} أعمال) بنجاح وبشكل مباشر في المعرض العام!`
+        );
+      } else {
+        setSuccessMsg(
+          files.length === 1
+            ? 'تم رفع العمل الفني بنجاح! نود إعلامك أن العمل قيد المراجعة حالياً وسوف يظهر في المعرض فور اعتماده من الإدارة. يمكنك متابعة حالته من صفحة "أعمالي".'
+            : `تم رفع الأعمال الفنية (${files.length} أعمال) بنجاح! هي الآن قيد المراجعة وسوف تظهر في المعرض فور اعتمادها.`
+        );
+      }
 
       setTimeout(() => {
         setIsUploadModalOpen(false);

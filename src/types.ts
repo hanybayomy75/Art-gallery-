@@ -54,10 +54,12 @@ export interface Artwork {
   isFeatured?: boolean;
   likesCount: number;
   commentsCount: number;
+  favoritesCount?: number;
   viewsCount?: number;
   ratingAverage?: number;
   ratingCount?: number;
   ratingSum?: number;
+  ratingDistribution?: Record<number, number>;
   rotation?: number; // 0, 90, 180, 270 degrees
   frameStyle?: FrameStyle;
   filterStyle?: FilterStyle;
@@ -99,10 +101,23 @@ export interface ContactMessage {
   userId?: string;
 }
 
+export type NotificationType = 
+  | 'like' 
+  | 'rating' 
+  | 'favorite' 
+  | 'comment' 
+  | 'artwork_approved' 
+  | 'artwork_rejected' 
+  | 'system';
+
 export interface AppNotification {
   id: string;
-  userId: string;
-  type: 'like' | 'comment' | 'rating' | 'system';
+  recipientUserId: string;
+  actorUserId?: string;
+  actorName?: string;
+  actorPhotoURL?: string;
+  userId?: string; // Backwards compatibility
+  type: NotificationType;
   title: string;
   message: string;
   artId?: string;

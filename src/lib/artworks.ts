@@ -10,10 +10,11 @@ import {
   where, 
   limit, 
   runTransaction, 
-  increment
+  increment 
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Artwork, ArtworkComment, ArtworkStatus, SortOption } from '../types';
+import { addAppNotification } from './notifications';
 
 export const DEFAULT_CATEGORIES = [
   'الكل',
@@ -39,32 +40,18 @@ export function getLocalUserArtworks(): Artwork[] {
     const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) return [];
     const list: Artwork[] = JSON.parse(raw);
-    let modified = false;
+    if (!Array.isArray(list)) return [];
 
-    // Deduplicate list by imageUrl / title and ensure statuses are valid
     const seenUrls = new Set<string>();
     const cleaned: Artwork[] = [];
 
     for (const art of list) {
       if (!art || !art.id) continue;
-      
-      let updatedArt = { ...art };
-      if (updatedArt.status === 'pending') {
-        updatedArt.status = 'approved';
-        modified = true;
-      }
-
-      const urlKey = updatedArt.imageUrl ? updatedArt.imageUrl.trim() : updatedArt.id;
+      const urlKey = art.imageUrl ? art.imageUrl.trim() : art.id;
       if (!seenUrls.has(urlKey)) {
         seenUrls.add(urlKey);
-        cleaned.push(updatedArt);
-      } else {
-        modified = true;
+        cleaned.push(art);
       }
-    }
-
-    if (modified) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cleaned));
     }
     return cleaned;
   } catch (e) {
@@ -119,38 +106,48 @@ export async function fetchApprovedArtworks(
   limitCount: number = 100,
   currentUserId?: string
 ): Promise<Artwork[]> {
-  const localList = getLocalUserArtworks();
-  const userUploadedMap = new Map<string, Artwork>();
+  const approvedMap = new Map<string, Artwork>();
 
-  // Load local artworks first
+  // 1. Query Firestore specifically for status == 'approved'
+  try {
+    const artworksRef = collection(db, 'artworks');
+    const qApproved = query(artworksRef, where('status', '==', 'approved'));
+    const snap = await getDocs(qApproved);
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Artwork;
+      approvedMap.set(docSnap.id, { id: docSnap.id, ...data, status: 'approved' });
+    });
+  } catch (error) {
+    console.warn('Notice: Error fetching Firestore approved artworks:', error);
+  }
+
+  // 2. Query legacy documents without a status field
+  try {
+    const artworksRef = collection(db, 'artworks');
+    const snapAll = await getDocs(artworksRef);
+    snapAll.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      if (!data.status || data.status === 'approved' || data.status === 'published') {
+        if (!approvedMap.has(docSnap.id)) {
+          approvedMap.set(docSnap.id, { id: docSnap.id, ...data, status: 'approved' });
+        }
+      }
+    });
+  } catch (e) {
+    // Ignore permissions fallback
+  }
+
+  // 3. Add approved items from device local storage
+  const localList = getLocalUserArtworks();
   localList.forEach((art) => {
-    if (art && art.id && art.status !== 'rejected') {
-      userUploadedMap.set(art.id, art);
+    if (art && art.id && art.status === 'approved') {
+      approvedMap.set(art.id, art);
     }
   });
 
-  // Fetch from Firestore
-  try {
-    const artworksRef = collection(db, 'artworks');
-    const snap = await getDocs(artworksRef);
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() as Artwork;
-      const artObj = { id: docSnap.id, ...data };
-      if (data.status !== 'rejected') {
-        userUploadedMap.set(docSnap.id, artObj);
-        saveLocalUserArtwork(artObj);
-      }
-    });
-  } catch (error) {
-    console.warn('Notice: Error fetching Firestore artworks:', error);
-  }
+  let finalCombined = Array.from(approvedMap.values());
 
-  const userUploadedList = Array.from(userUploadedMap.values());
-  userUploadedList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-
-  let finalCombined: Artwork[] = [...userUploadedList];
-
-  // Clean and validate category filter
+  // Category filter
   const cleanFilter = (categoryFilter || 'الكل').trim();
   let effectiveCategory = cleanFilter;
 
@@ -172,7 +169,7 @@ export async function fetchApprovedArtworks(
     });
   }
 
-  // Client-side featured filter
+  // Featured filter
   if (sortOption === 'featured') {
     const featuredOnly = finalCombined.filter((art) => art.isFeatured);
     if (featuredOnly.length > 0) {
@@ -180,7 +177,7 @@ export async function fetchApprovedArtworks(
     }
   }
 
-  // Client-side search query filtering
+  // Search query filtering
   if (searchQuery.trim()) {
     const qLower = searchQuery.toLowerCase().trim();
     finalCombined = finalCombined.filter((art) => 
@@ -191,7 +188,7 @@ export async function fetchApprovedArtworks(
     );
   }
 
-  // Client-side sorting
+  // Sorting
   if (sortOption === 'likes') {
     finalCombined.sort((a, b) => (b.likesCount || 0) - (a.likesCount || 0));
   } else if (sortOption === 'comments') {
@@ -244,38 +241,35 @@ export async function fetchArtworkById(artId: string): Promise<Artwork | null> {
 export async function fetchUserArtworks(userId: string, userDisplayName?: string): Promise<Artwork[]> {
   const userMap = new Map<string, Artwork>();
 
+  if (userId && userId !== 'guest') {
+    try {
+      const artworksRef = collection(db, 'artworks');
+      const qUser = query(artworksRef, where('userId', '==', userId));
+      const snap = await getDocs(qUser);
+      snap.forEach((d) => {
+        const data = d.data() as Artwork;
+        userMap.set(d.id, { id: d.id, ...data });
+      });
+    } catch (error) {
+      console.warn('Notice: Error fetching user artworks from Firestore:', error);
+    }
+  }
+
   const localList = getLocalUserArtworks();
   localList.forEach((a) => {
     if (
-      !a.userId || 
       a.userId === userId || 
       (userDisplayName && (a.userName === userDisplayName || a.artistName === userDisplayName))
     ) {
-      userMap.set(a.id, a);
+      if (!userMap.has(a.id)) {
+        userMap.set(a.id, a);
+      }
     }
   });
-
-  try {
-    const snap = await getDocs(collection(db, 'artworks'));
-    snap.forEach((d) => {
-      const data = d.data() as Artwork;
-      if (
-        data.userId === userId || 
-        (!data.userId && userDisplayName && (data.userName === userDisplayName || data.artistName === userDisplayName))
-      ) {
-        const artObj = { id: d.id, ...data };
-        userMap.set(d.id, artObj);
-        saveLocalUserArtwork(artObj);
-      }
-    });
-  } catch (error) {
-    console.warn('Notice: Error fetching user artworks from Firestore:', error);
-  }
 
   const list = Array.from(userMap.values());
   list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-  // Deduplicate user artworks by imageUrl / ID
   const uniqueUserMap = new Map<string, Artwork>();
   const seenUrls = new Set<string>();
   list.forEach((art) => {
@@ -291,21 +285,25 @@ export async function fetchUserArtworks(userId: string, userDisplayName?: string
 export async function fetchPendingArtworks(): Promise<Artwork[]> {
   const pendingMap = new Map<string, Artwork>();
 
-  getLocalUserArtworks()
-    .filter((a) => a.status === 'pending')
-    .forEach((a) => pendingMap.set(a.id, a));
-
   try {
-    const snap = await getDocs(collection(db, 'artworks'));
+    const artworksRef = collection(db, 'artworks');
+    const qPending = query(artworksRef, where('status', '==', 'pending'));
+    const snap = await getDocs(qPending);
     snap.forEach((d) => {
       const data = d.data() as Artwork;
-      if (data.status === 'pending') {
-        pendingMap.set(d.id, { id: d.id, ...data });
-      }
+      pendingMap.set(d.id, { id: d.id, ...data, status: 'pending' });
     });
   } catch (error) {
     console.error('Error fetching pending artworks:', error);
   }
+
+  getLocalUserArtworks()
+    .filter((a) => a.status === 'pending')
+    .forEach((a) => {
+      if (!pendingMap.has(a.id)) {
+        pendingMap.set(a.id, a);
+      }
+    });
 
   const list = Array.from(pendingMap.values());
   return list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -337,44 +335,42 @@ export async function createArtwork(
     isFeatured: false,
     likesCount: 0,
     commentsCount: 0,
+    favoritesCount: 0,
     viewsCount: 0,
+    ratingAverage: 0,
+    ratingCount: 0,
+    ratingSum: 0,
+    ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     createdAt: new Date().toISOString()
   };
 
   const id = `local-art-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
   const createdArt: Artwork = { id, ...newArtworkData };
   
-  // Save locally IMMEDIATELY so artwork appears instantly without network delay
   saveLocalUserArtwork(createdArt);
   notifyArtworkChange();
 
-  // Attempt Firestore sync in background with a 2s timeout
   try {
-    const addDocPromise = addDoc(collection(db, 'artworks'), newArtworkData);
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Firestore write timeout')), 2000)
-    );
-    const docRef = await Promise.race([addDocPromise, timeoutPromise]);
-    if (docRef && docRef.id) {
-      removeLocalUserArtwork(id);
-      const serverArt: Artwork = { id: docRef.id, ...newArtworkData };
-      saveLocalUserArtwork(serverArt);
-      notifyArtworkChange();
-      return docRef.id;
-    }
-  } catch (err) {
-    console.warn('Notice: Created artwork saved locally (Firestore write timed out or offline):', err);
+    const docRef = await addDoc(collection(db, 'artworks'), newArtworkData);
+    removeLocalUserArtwork(id, data.imageUrl);
+    saveLocalUserArtwork({ ...createdArt, id: docRef.id });
+    notifyArtworkChange();
+    return docRef.id;
+  } catch (error) {
+    console.warn('Notice: Artwork created locally (client offline):', error);
+    return id;
   }
-
-  return id;
 }
 
 export async function updateArtworkStatus(
   artId: string, 
   status: ArtworkStatus, 
-  rejectionReason: string = ''
+  rejectionReason: string = '',
+  actorUser?: { uid: string; displayName?: string }
 ): Promise<void> {
   if (!artId || artId.startsWith('wm-') || artId.startsWith('sample-')) return;
+
+  const artDoc = await fetchArtworkById(artId);
 
   const localList = getLocalUserArtworks();
   const found = localList.find((a) => a.id === artId);
@@ -395,57 +391,101 @@ export async function updateArtworkStatus(
   } catch (error) {
     console.warn('Notice: Failed to update artwork status (client offline):', error);
   }
+
+  // Send Notification to owner
+  if (artDoc && artDoc.userId) {
+    if (status === 'approved') {
+      await addAppNotification({
+        recipientUserId: artDoc.userId,
+        actorUserId: actorUser?.uid || 'admin',
+        actorName: actorUser?.displayName || 'إدارة المعرض',
+        type: 'artwork_approved',
+        title: 'تمت الموافقة على عملك الفني 🎉',
+        message: 'تمت الموافقة على عملك ونشره في المعرض 🎉',
+        artId: artDoc.id,
+        artTitle: artDoc.title,
+        artImageUrl: artDoc.imageUrl
+      });
+    } else if (status === 'rejected') {
+      await addAppNotification({
+        recipientUserId: artDoc.userId,
+        actorUserId: actorUser?.uid || 'admin',
+        actorName: actorUser?.displayName || 'إدارة المعرض',
+        type: 'artwork_rejected',
+        title: 'تم رفض عملك الفني ⚠️',
+        message: rejectionReason 
+          ? `تم رفض عملك. سبب الرفض: ${rejectionReason}`
+          : 'تم رفض عملك. يمكنك مراجعة سبب الرفض داخل صفحة أعمالي.',
+        artId: artDoc.id,
+        artTitle: artDoc.title,
+        artImageUrl: artDoc.imageUrl
+      });
+    }
+  }
+
   notifyArtworkChange();
 }
 
-export async function toggleFeaturedArtwork(artId: string, isFeatured: boolean): Promise<void> {
-  if (!artId || artId.startsWith('wm-') || artId.startsWith('sample-')) return;
+export async function deleteArtwork(artId: string, imageUrl?: string): Promise<void> {
+  removeLocalUserArtwork(artId, imageUrl);
+  notifyArtworkChange();
+
+  if (!artId.startsWith('wm-') && !artId.startsWith('sample-') && !artId.startsWith('local-art-')) {
+    try {
+      const artRef = doc(db, 'artworks', artId);
+      await deleteDoc(artRef);
+    } catch (error) {
+      console.warn('Notice: Could not delete artwork document from Firestore:', error);
+    }
+  }
+}
+
+export async function updateArtworkData(
+  artId: string,
+  updatedFields: Partial<Artwork>
+): Promise<void> {
   const localList = getLocalUserArtworks();
-  const found = localList.find((a) => a.id === artId);
-  if (found) {
-    saveLocalUserArtwork({ ...found, isFeatured });
+  const index = localList.findIndex((a) => a.id === artId);
+  if (index !== -1) {
+    localList[index] = { ...localList[index], ...updatedFields };
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localList));
   }
-  try {
-    const artRef = doc(db, 'artworks', artId);
-    await updateDoc(artRef, { isFeatured });
-  } catch (error) {
-    console.warn('Notice: Failed to toggle featured state (client offline):', error);
+
+  if (!artId.startsWith('wm-') && !artId.startsWith('sample-') && !artId.startsWith('local-art-')) {
+    try {
+      const artRef = doc(db, 'artworks', artId);
+      await updateDoc(artRef, updatedFields);
+    } catch (error) {
+      console.warn('Notice: Could not update artwork in Firestore:', error);
+    }
   }
+
   notifyArtworkChange();
 }
 
 export async function updatePendingArtworkData(
-  artId: string, 
-  updates: Partial<Artwork>
+  artId: string,
+  updatedFields: Partial<Artwork>
 ): Promise<void> {
-  if (!artId || artId.startsWith('wm-') || artId.startsWith('sample-')) return;
-  const localList = getLocalUserArtworks();
-  const found = localList.find((a) => a.id === artId);
-  if (found) {
-    saveLocalUserArtwork({ ...found, ...updates });
-  }
-  try {
-    const artRef = doc(db, 'artworks', artId);
-    await updateDoc(artRef, updates);
-  } catch (error) {
-    console.warn('Notice: Failed to update artwork data (client offline):', error);
-  }
-  notifyArtworkChange();
+  await updateArtworkData(artId, updatedFields);
 }
 
-export const updateArtworkData = updatePendingArtworkData;
+export async function toggleFeaturedArtwork(artId: string, currentFeaturedState: boolean): Promise<void> {
+  const newFeatured = !currentFeaturedState;
 
-export async function deleteArtwork(artId: string, imageUrl?: string): Promise<void> {
-  if (!artId) return;
-  removeLocalUserArtwork(artId, imageUrl);
+  const localList = getLocalUserArtworks();
+  const index = localList.findIndex((a) => a.id === artId);
+  if (index !== -1) {
+    localList[index].isFeatured = newFeatured;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localList));
+  }
 
-  if (!artId.startsWith('wm-') && !artId.startsWith('sample-')) {
+  if (!artId.startsWith('wm-') && !artId.startsWith('sample-') && !artId.startsWith('local-art-')) {
     try {
-      const deletePromise = deleteDoc(doc(db, 'artworks', artId));
-      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
-      await Promise.race([deletePromise, timeoutPromise]);
+      const artRef = doc(db, 'artworks', artId);
+      await updateDoc(artRef, { isFeatured: newFeatured });
     } catch (error) {
-      console.warn('Notice: Could not delete artwork in Firestore:', error);
+      console.warn('Notice: Could not update featured status in Firestore:', error);
     }
   }
 
@@ -464,26 +504,50 @@ export async function checkIfUserLikedArtwork(artId: string, userId: string): Pr
   }
 }
 
-export async function toggleLikeArtwork(artId: string, userId: string): Promise<boolean> {
+export async function toggleLikeArtwork(
+  artId: string, 
+  userId: string,
+  userProfile?: { displayName?: string; artistName?: string; photoURL?: string }
+): Promise<boolean> {
   if (!artId || !userId || artId.startsWith('wm-') || artId.startsWith('sample-')) return false;
   try {
     const artRef = doc(db, 'artworks', artId);
     const likeRef = doc(db, 'artworks', artId, 'likes', userId);
 
-    return await runTransaction(db, async (transaction) => {
+    const result = await runTransaction(db, async (transaction) => {
+      const artDoc = await transaction.get(artRef);
       const likeDoc = await transaction.get(likeRef);
+      const artData = artDoc.exists() ? (artDoc.data() as Artwork) : null;
+
       if (likeDoc.exists()) {
-        // Remove like
         transaction.delete(likeRef);
         transaction.update(artRef, { likesCount: increment(-1) });
-        return false;
+        return { isLiked: false, artData };
       } else {
-        // Add like
         transaction.set(likeRef, { userId, createdAt: new Date().toISOString() });
         transaction.update(artRef, { likesCount: increment(1) });
-        return true;
+        return { isLiked: true, artData };
       }
     });
+
+    if (result.isLiked && result.artData && result.artData.userId) {
+      const senderName = userProfile?.artistName || userProfile?.displayName || 'مستكشف الفنون';
+      await addAppNotification({
+        recipientUserId: result.artData.userId,
+        actorUserId: userId,
+        actorName: senderName,
+        actorPhotoURL: userProfile?.photoURL || '',
+        type: 'like',
+        title: 'إعجاب جديد ❤️',
+        message: `قام ${senderName} بالإعجاب بعملك ❤️`,
+        artId: result.artData.id,
+        artTitle: result.artData.title,
+        artImageUrl: result.artData.imageUrl
+      });
+    }
+
+    notifyArtworkChange();
+    return result.isLiked;
   } catch (err) {
     console.warn('Notice: Failed to toggle like (client offline):', err);
     return false;
@@ -534,6 +598,22 @@ export async function addArtworkComment(
     });
 
     await updateDoc(artRef, { commentsCount: increment(1) });
+
+    const artDoc = await fetchArtworkById(artId);
+    if (artDoc && artDoc.userId) {
+      await addAppNotification({
+        recipientUserId: artDoc.userId,
+        actorUserId: userId,
+        actorName: userName,
+        actorPhotoURL: userPhoto,
+        type: 'comment',
+        title: 'تعليق جديد 💬',
+        message: `قام ${userName} بالتعليق على عملك: "${text.trim().slice(0, 40)}..."`,
+        artId: artDoc.id,
+        artTitle: artDoc.title,
+        artImageUrl: artDoc.imageUrl
+      });
+    }
   } catch (err) {
     console.warn('Notice: Failed to add comment (client offline):', err);
   }
@@ -584,17 +664,26 @@ export function getUserArtworkRating(artId: string, raterId?: string): number | 
   return null;
 }
 
-export function getArtworkRatingMeta(art: Artwork): { ratingAverage: number; ratingCount: number; ratingSum: number } {
-  if (!art) return { ratingAverage: 0, ratingCount: 0, ratingSum: 0 };
+export function getArtworkRatingMeta(art: Artwork): { 
+  ratingAverage: number; 
+  ratingCount: number; 
+  ratingSum: number;
+  ratingDistribution: Record<number, number>;
+} {
+  if (!art) return { ratingAverage: 0, ratingCount: 0, ratingSum: 0, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
 
-  // Check local override first
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem(`artwork_rating_meta_${art.id}`);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (typeof parsed.ratingAverage === 'number' && typeof parsed.ratingCount === 'number') {
-          return parsed;
+          return {
+            ratingAverage: parsed.ratingAverage,
+            ratingCount: parsed.ratingCount,
+            ratingSum: parsed.ratingSum || Math.round(parsed.ratingAverage * parsed.ratingCount),
+            ratingDistribution: parsed.ratingDistribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+          };
         }
       }
     } catch (e) {
@@ -605,10 +694,12 @@ export function getArtworkRatingMeta(art: Artwork): { ratingAverage: number; rat
   const avg = art.ratingAverage || 0;
   const count = art.ratingCount || 0;
   const sum = art.ratingSum || Math.round(avg * count);
+  const dist = art.ratingDistribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   return {
     ratingAverage: avg,
     ratingCount: count,
-    ratingSum: sum
+    ratingSum: sum,
+    ratingDistribution: dist
   };
 }
 
@@ -619,96 +710,141 @@ export function enrichArtworkRating(art: Artwork): Artwork {
     ...art,
     ratingAverage: meta.ratingAverage,
     ratingCount: meta.ratingCount,
-    ratingSum: meta.ratingSum
+    ratingSum: meta.ratingSum,
+    ratingDistribution: meta.ratingDistribution
   };
+}
+
+export async function fetchUserRatingFromFirestore(artId: string, userId: string): Promise<number | null> {
+  if (!artId || !userId || userId === 'guest' || artId.startsWith('wm-') || artId.startsWith('sample-')) return null;
+  try {
+    const ratingDoc = await getDoc(doc(db, 'artworks', artId, 'ratings', userId));
+    if (ratingDoc.exists()) {
+      return Number(ratingDoc.data().rating);
+    }
+  } catch (e) {
+    // ignore
+  }
+  return null;
 }
 
 export async function rateArtwork(
   artId: string,
   rating: number,
-  raterId?: string
-): Promise<{ ratingAverage: number; ratingCount: number; userRating: number }> {
+  userId?: string,
+  userProfile?: { displayName?: string; artistName?: string; photoURL?: string }
+): Promise<{ 
+  ratingAverage: number; 
+  ratingCount: number; 
+  userRating: number;
+  ratingDistribution: Record<number, number>;
+}> {
   if (!artId || rating < 1 || rating > 5) {
-    return { ratingAverage: 0, ratingCount: 0, userRating: 0 };
+    return { ratingAverage: 0, ratingCount: 0, userRating: 0, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
   }
 
-  const activeRaterId = raterId || getVisitorId();
-  const existingUserRating = getUserArtworkRating(artId, activeRaterId);
+  const activeUserId = userId || getVisitorId();
 
-  // Save user rating locally
   if (typeof window !== 'undefined') {
-    localStorage.setItem(`artwork_user_rating_${artId}_${activeRaterId}`, rating.toString());
+    localStorage.setItem(`artwork_user_rating_${artId}_${activeUserId}`, rating.toString());
   }
 
-  // Get current rating meta
-  const currentMeta = getArtworkRatingMeta({ id: artId } as Artwork);
+  if (artId.startsWith('wm-') || artId.startsWith('sample-') || activeUserId === 'guest') {
+    const currentMeta = getArtworkRatingMeta({ id: artId } as Artwork);
+    let newCount = currentMeta.ratingCount + 1;
+    let newSum = currentMeta.ratingSum + rating;
+    let newAverage = Math.round((newSum / newCount) * 10) / 10;
+    const dist = { ...currentMeta.ratingDistribution, [rating]: (currentMeta.ratingDistribution[rating] || 0) + 1 };
 
-  let newCount = currentMeta.ratingCount;
-  let newSum = currentMeta.ratingSum;
-
-  if (existingUserRating !== null) {
-    // User is changing their existing rating
-    const delta = rating - existingUserRating;
-    newSum += delta;
-  } else {
-    // Brand new rating
-    newCount += 1;
-    newSum += rating;
+    const updatedMeta = { ratingAverage: newAverage, ratingCount: newCount, ratingSum: newSum, ratingDistribution: dist };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`artwork_rating_meta_${artId}`, JSON.stringify(updatedMeta));
+    }
+    notifyArtworkChange();
+    return { ratingAverage: newAverage, ratingCount: newCount, userRating: rating, ratingDistribution: dist };
   }
 
-  if (newCount < 1) newCount = 1;
-  if (newSum < 0) newSum = 0;
-
-  const newAverage = Math.round((newSum / newCount) * 10) / 10;
-
-  const updatedMeta = {
-    ratingAverage: newAverage,
-    ratingCount: newCount,
-    ratingSum: newSum
-  };
-
-  // Cache updated meta in localStorage
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(`artwork_rating_meta_${artId}`, JSON.stringify(updatedMeta));
-  }
-
-  // If local user uploaded artwork, update it in LOCAL_STORAGE_KEY
   try {
-    const localList = getLocalUserArtworks();
-    const foundIdx = localList.findIndex((a) => a.id === artId);
-    if (foundIdx !== -1) {
-      localList[foundIdx] = {
-        ...localList[foundIdx],
-        ratingAverage: newAverage,
-        ratingCount: newCount,
-        ratingSum: newSum
-      };
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(localList));
-    }
-  } catch (e) {
-    // ignore
-  }
+    const artRef = doc(db, 'artworks', artId);
+    const ratingRef = doc(db, 'artworks', artId, 'ratings', activeUserId);
 
-  // If Firestore artwork, update in Firestore
-  if (!artId.startsWith('wm-') && !artId.startsWith('sample-')) {
-    try {
-      const artRef = doc(db, 'artworks', artId);
-      await updateDoc(artRef, {
-        ratingAverage: newAverage,
-        ratingCount: newCount,
-        ratingSum: newSum
+    const result = await runTransaction(db, async (transaction) => {
+      const artDoc = await transaction.get(artRef);
+      const ratingDoc = await transaction.get(ratingRef);
+
+      if (!artDoc.exists()) {
+        throw new Error('Artwork not found');
+      }
+
+      const artData = artDoc.data() as Artwork;
+      const existingRating = ratingDoc.exists() ? Number(ratingDoc.data().rating) : null;
+
+      let dist: Record<number, number> = artData.ratingDistribution || { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      let newCount = artData.ratingCount || 0;
+      let newSum = artData.ratingSum || 0;
+
+      if (existingRating !== null) {
+        dist[existingRating] = Math.max(0, (dist[existingRating] || 1) - 1);
+        dist[rating] = (dist[rating] || 0) + 1;
+        newSum = newSum - existingRating + rating;
+      } else {
+        dist[rating] = (dist[rating] || 0) + 1;
+        newCount += 1;
+        newSum += rating;
+      }
+
+      const newAverage = newCount > 0 ? Math.round((newSum / newCount) * 10) / 10 : 0;
+
+      transaction.set(ratingRef, {
+        artworkId: artId,
+        userId: activeUserId,
+        rating,
+        updatedAt: new Date().toISOString(),
+        createdAt: ratingDoc.exists() ? ratingDoc.data().createdAt : new Date().toISOString()
       });
-    } catch (err) {
-      console.warn('Notice: Rating updated locally (client offline or doc missing in Firestore):', err);
+
+      transaction.update(artRef, {
+        ratingAverage: newAverage,
+        ratingCount: newCount,
+        ratingSum: newSum,
+        ratingDistribution: dist
+      });
+
+      return {
+        artData,
+        newAverage,
+        newCount,
+        newSum,
+        dist
+      };
+    });
+
+    if (result.artData && result.artData.userId) {
+      const senderName = userProfile?.artistName || userProfile?.displayName || 'مستكشف الفنون';
+      await addAppNotification({
+        recipientUserId: result.artData.userId,
+        actorUserId: activeUserId,
+        actorName: senderName,
+        actorPhotoURL: userProfile?.photoURL || '',
+        type: 'rating',
+        title: 'تقييم جديد 🌟',
+        message: `قام ${senderName} بتقييم عملك بـ ${rating} نجوم ⭐`,
+        artId: result.artData.id,
+        artTitle: result.artData.title,
+        artImageUrl: result.artData.imageUrl
+      });
     }
+
+    notifyArtworkChange();
+
+    return {
+      ratingAverage: result.newAverage,
+      ratingCount: result.newCount,
+      userRating: rating,
+      ratingDistribution: result.dist
+    };
+  } catch (err) {
+    console.warn('Notice: Error rating artwork in Firestore:', err);
+    return { ratingAverage: 0, ratingCount: 0, userRating: 0, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
   }
-
-  // Notify components to update in real time
-  notifyArtworkChange();
-
-  return {
-    ratingAverage: newAverage,
-    ratingCount: newCount,
-    userRating: rating
-  };
 }

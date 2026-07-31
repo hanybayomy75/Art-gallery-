@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { 
   getUserNotifications, 
   fetchUserNotificationsFromFirestore,
   markNotificationAsRead, 
   markAllNotificationsAsRead, 
   clearUserNotifications, 
+  getLocalNotifications,
   NOTIFICATION_EVENT 
 } from '../lib/notifications';
 import { AppNotification } from '../types';
@@ -36,15 +39,75 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onSelect
   useEffect(() => {
     loadNotifs();
 
+    let unsub: (() => void) | null = null;
+    if (user?.uid) {
+      try {
+        const notifRef = collection(db, 'notifications');
+        const q = query(
+          notifRef,
+          where('recipientUserId', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        );
+        unsub = onSnapshot(
+          q,
+          (snap) => {
+            const notifMap = new Map<string, AppNotification>();
+            snap.forEach((d) => {
+              const data = d.data();
+              const item: AppNotification = {
+                id: d.id,
+                recipientUserId: data.recipientUserId || data.userId || user.uid,
+                actorUserId: data.actorUserId || '',
+                actorName: data.actorName || data.senderName || '',
+                actorPhotoURL: data.actorPhotoURL || data.senderPhoto || '',
+                userId: data.recipientUserId || data.userId || user.uid,
+                type: data.type || 'system',
+                title: data.title || '',
+                message: data.message || '',
+                artId: data.artId || '',
+                artTitle: data.artTitle || '',
+                artImageUrl: data.artImageUrl || '',
+                senderName: data.actorName || data.senderName || '',
+                senderPhoto: data.actorPhotoURL || data.senderPhoto || '',
+                read: !!data.read,
+                createdAt: data.createdAt || new Date().toISOString()
+              };
+              notifMap.set(d.id, item);
+            });
+
+            // Also merge local notifications if any
+            const local = getLocalNotifications();
+            local.forEach((n) => {
+              const recId = n.recipientUserId || n.userId;
+              if ((recId === user.uid || recId === 'all') && !notifMap.has(n.id)) {
+                notifMap.set(n.id, n);
+              }
+            });
+
+            const list = Array.from(notifMap.values()).sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+            setNotifications(list);
+          },
+          (err) => {
+            console.warn('Realtime notifications listener error:', err);
+          }
+        );
+      } catch (e) {
+        console.warn('Could not establish notifications realtime listener:', e);
+      }
+    }
+
     const handleUpdate = () => {
       loadNotifs();
     };
 
     window.addEventListener(NOTIFICATION_EVENT, handleUpdate);
     return () => {
+      if (unsub) unsub();
       window.removeEventListener(NOTIFICATION_EVENT, handleUpdate);
     };
-  }, [activeUserId]);
+  }, [user?.uid]);
 
   // Close when clicking outside
   useEffect(() => {

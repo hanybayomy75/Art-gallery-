@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { X, Mail, Lock, User, Sparkles, AlertCircle, Copy, Check } from 'lucide-react';
 
@@ -20,6 +20,14 @@ export const AuthModal: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedDomain, setCopiedDomain] = useState(false);
+
+  // Clear fields whenever modal opens/closes or mode changes to ensure zero saved credentials in form state
+  useEffect(() => {
+    setEmail('');
+    setPassword('');
+    setName('');
+    setError(null);
+  }, [isAuthModalOpen, mode]);
 
   const copyHostname = () => {
     navigator.clipboard.writeText(window.location.hostname);
@@ -247,6 +255,7 @@ export const AuthModal: React.FC = () => {
               <Mail className="absolute top-3.5 right-3.5 w-4 h-4 text-slate-400" />
               <input
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
@@ -263,6 +272,7 @@ export const AuthModal: React.FC = () => {
               <Lock className="absolute top-3.5 right-3.5 w-4 h-4 text-slate-400" />
               <input
                 type="password"
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"

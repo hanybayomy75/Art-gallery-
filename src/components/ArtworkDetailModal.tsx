@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Artwork, ArtworkComment, FrameStyle, FilterStyle } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { db } from '../lib/firebase';
+import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { ArtworkFrame, FRAME_OPTIONS, FILTER_OPTIONS } from './ArtworkFrame';
 import { StarRating } from './StarRating';
 import { 
@@ -15,7 +17,8 @@ import {
   deleteArtwork,
   rateArtwork,
   getUserArtworkRating,
-  getArtworkRatingMeta
+  getArtworkRatingMeta,
+  getArtistPrefix
 } from '../lib/artworks';
 import { addAppNotification } from '../lib/notifications';
 import { sendEmailNotification, getArtistEmailSettings } from '../lib/emailService';
@@ -41,7 +44,9 @@ import {
   Frame as FrameIcon,
   Save,
   Star,
-  Bookmark
+  Bookmark,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 import { isArtworkFavorite, toggleFavoriteArtwork, FAVORITE_EVENT } from '../lib/favorites';
 
@@ -64,6 +69,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [copiedLink, setCopiedLink] = useState(false);
   const [relatedWorks, setRelatedWorks] = useState<Artwork[]>([]);
   const [likeAnimating, setLikeAnimating] = useState(false);
@@ -89,6 +95,18 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
+  // Lock body scroll when Lightbox is open
+  useEffect(() => {
+    if (isLightboxOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isLightboxOpen]);
+
   useEffect(() => {
     if (!artwork) return;
 
@@ -104,8 +122,11 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     const existing = getUserArtworkRating(artwork.id, user?.uid);
     setUserRating(existing);
 
+    // Dynamic prefix based on category (e.g. "تصوير الفنان" vs "بريشة الفنان")
+    const artistPrefix = getArtistPrefix(artwork.category);
+
     // Update client-side document head meta tags for browser extensions/sharers
-    const titleText = `${artwork.title} - بريشة الفنان ${artwork.artistName || 'فنان المعرض'} | معرض الفنون`;
+    const titleText = `${artwork.title} - ${artistPrefix} ${artwork.artistName || 'فنان المعرض'} | معرض الفنون`;
     document.title = titleText;
 
     const setMeta = (nameOrProperty: string, content: string, isName = false) => {
@@ -120,11 +141,11 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     };
 
     const shareImg = getSocialShareImageUrl(artwork.imageUrl);
-    setMeta('og:title', `${artwork.title} - بريشة الفنان ${artwork.artistName || 'فنان المعرض'}`);
+    setMeta('og:title', `${artwork.title} - ${artistPrefix} ${artwork.artistName || 'فنان المعرض'}`);
     setMeta('og:image', shareImg);
     setMeta('og:image:secure_url', shareImg);
     setMeta('og:url', `${window.location.origin}/art/${artwork.id}`);
-    setMeta('twitter:title', `${artwork.title} - بريشة الفنان ${artwork.artistName || 'فنان المعرض'}`, true);
+    setMeta('twitter:title', `${artwork.title} - ${artistPrefix} ${artwork.artistName || 'فنان المعرض'}`, true);
     setMeta('twitter:image', shareImg, true);
 
     // Check user favorite status
@@ -147,7 +168,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
       setIsLiked(false);
     }
 
-    // Load comments
+    // Load initial comments
     if (!isSampleOrWm) {
       fetchArtworkComments(artwork.id)
         .then((list) => setComments(list))
@@ -163,6 +184,43 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
       })
       .catch(() => setRelatedWorks([]));
 
+    // Realtime Firestore listeners for instant statistics & comments updates
+    let unsubArtDoc: (() => void) | null = null;
+    let unsubComments: (() => void) | null = null;
+
+    if (!isSampleOrWm) {
+      try {
+        const artRef = doc(db, 'artworks', artwork.id);
+        unsubArtDoc = onSnapshot(artRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const freshData = docSnap.data() as Artwork;
+            if (freshData.likesCount !== undefined) {
+              setLikesCount(freshData.likesCount);
+            }
+            const freshMeta = getArtworkRatingMeta(freshData);
+            setRatingMeta(freshMeta);
+          }
+        });
+
+        const commentsRef = collection(db, 'artworks', artwork.id, 'comments');
+        const qComments = query(commentsRef, orderBy('createdAt', 'desc'));
+        unsubComments = onSnapshot(qComments, (snap) => {
+          const freshComments: ArtworkComment[] = [];
+          snap.forEach((d) => {
+            freshComments.push({ id: d.id, ...d.data() } as ArtworkComment);
+          });
+          setComments(freshComments);
+        });
+      } catch (err) {
+        console.warn('Notice: Realtime snapshot error in ArtworkDetailModal:', err);
+      }
+    }
+
+    return () => {
+      window.removeEventListener(FAVORITE_EVENT, updateFavStatus);
+      if (unsubArtDoc) unsubArtDoc();
+      if (unsubComments) unsubComments();
+    };
   }, [artwork, user]);
 
   if (!artwork) return null;
@@ -787,7 +845,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   </a>
 
                   <a
-                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`شاهد العمل الفني "${artwork.title}" بريشة الفنان ${artwork.artistName}\n${shareUrl}`)}`}
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`شاهد العمل الفني "${artwork.title}" ${getArtistPrefix(artwork.category)} ${artwork.artistName}\n${shareUrl}`)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="px-3 py-1.5 rounded-xl bg-[#25D366] text-white font-bold hover:bg-[#20bd5a] transition-all text-xs flex items-center gap-1.5 shadow-sm"
@@ -796,7 +854,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   </a>
 
                   <a
-                    href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`العمل الفني "${artwork.title}" بريشة الفنان ${artwork.artistName}`)}`}
+                    href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(`العمل الفني "${artwork.title}" ${getArtistPrefix(artwork.category)} ${artwork.artistName}`)}`}
                     target="_blank"
                     rel="noreferrer"
                     className="px-3 py-1.5 rounded-xl bg-[#229ED9] text-white font-bold hover:bg-[#1d8cb0] transition-all text-xs flex items-center gap-1.5 shadow-sm"
@@ -848,7 +906,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                         {window.location.host}
                       </p>
                       <h4 className="text-xs font-bold text-slate-900 dark:text-white font-serif line-clamp-1">
-                        {artwork.title} - بريشة الفنان {artwork.artistName}
+                        {artwork.title} - {getArtistPrefix(artwork.category)} {artwork.artistName}
                       </h4>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-tight font-sans">
                         {artwork.description || `استكشف هذه اللوحة الفنية المميزة في معرض الفنون العربية والعالمية.`}
@@ -929,21 +987,65 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
         </div>
       </div>
 
-      {/* Lightbox Fullscreen Modal */}
+      {/* Enhanced Lightbox Fullscreen Modal */}
       {isLightboxOpen && (
-        <div className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <button
-            onClick={() => setIsLightboxOpen(false)}
-            className="absolute top-6 left-6 p-3 rounded-full bg-white/10 text-white hover:bg-white/20 transition-all z-50"
-          >
-            <X className="w-6 h-6" />
-          </button>
-          <img
-            src={artwork.imageUrl}
-            alt={artwork.title}
-            referrerPolicy="no-referrer"
-            className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
-          />
+        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-6 animate-in fade-in duration-300">
+          {/* Header Bar */}
+          <div className="w-full flex items-center justify-between text-white z-50">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold font-serif line-clamp-1">{artwork.title}</span>
+              <span className="text-xs text-slate-400 font-sans shrink-0">({getArtistPrefix(artwork.category)}: {artwork.artistName})</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setZoomLevel((z) => Math.min(z + 0.5, 3))}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all shadow-md"
+                title="تكبير (Zoom in)"
+              >
+                <ZoomIn className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setZoomLevel((z) => Math.max(z - 0.5, 1))}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all shadow-md"
+                title="تصغير (Zoom out)"
+              >
+                <ZoomOut className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setZoomLevel(1)}
+                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all shadow-md text-xs font-bold"
+                title="إعادة التكبير"
+              >
+                1:1
+              </button>
+              <button
+                onClick={() => {
+                  setIsLightboxOpen(false);
+                  setZoomLevel(1);
+                }}
+                className="p-2.5 rounded-full bg-rose-600/90 hover:bg-rose-600 text-white transition-all shadow-md"
+                title="إغلاق"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Image View Container */}
+          <div className="relative flex-1 w-full flex items-center justify-center overflow-auto my-3 p-2 custom-scrollbar">
+            <img
+              src={artwork.imageUrl}
+              alt={artwork.title}
+              referrerPolicy="no-referrer"
+              style={{ transform: `scale(${zoomLevel})` }}
+              className="max-w-full max-h-full object-contain transition-transform duration-200 select-none shadow-2xl rounded-lg"
+            />
+          </div>
+
+          {/* Footer Guide */}
+          <p className="text-xs text-slate-400 text-center z-50">
+            اضغط على أدوات التكبير أو اسحب بأصابعك للتحكم في الصورة بمرونة في وضع ملء الشاشة.
+          </p>
         </div>
       )}
     </>

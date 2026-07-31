@@ -42,6 +42,27 @@ function getSocialImageUrl(url: string): string {
   return url;
 }
 
+function isPhotographyCategory(category?: string): boolean {
+  if (!category) return false;
+  const clean = category.trim().toLowerCase();
+  return (
+    clean === 'تصوير فوتوغرافي' ||
+    clean === 'تصوير' ||
+    clean === 'فوتوغرافي' ||
+    clean === 'photography' ||
+    clean === 'photo' ||
+    clean.includes('تصوير') ||
+    clean.includes('photograph')
+  );
+}
+
+function getArtistPrefix(category?: string): string {
+  if (isPhotographyCategory(category)) {
+    return 'تصوير الفنان';
+  }
+  return 'بريشة الفنان';
+}
+
 // Health check route
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', name: 'معرض الفنون API' });
@@ -281,10 +302,11 @@ async function startServer() {
 
       const artist = artworkData.artistName || artworkData.userName || 'فنان المعرض';
       const rawTitle = artworkData.title || 'عمل فني';
-      const pageTitle = `${rawTitle} - بريشة الفنان ${artist} | معرض الفنون`;
+      const prefix = getArtistPrefix(artworkData.category);
+      const pageTitle = `${rawTitle} - ${prefix} ${artist} | معرض الفنون`;
       const description = artworkData.description
         ? (artworkData.description.length > 160 ? artworkData.description.slice(0, 157) + '...' : artworkData.description)
-        : `استكشف اللوحة الفنية "${rawTitle}" بريشة الفنان ${artist} في منصة معرض الفنون العربية.`;
+        : `استكشف اللوحة الفنية "${rawTitle}" ${prefix} ${artist} في منصة معرض الفنون العربية.`;
       
       const xProto = req.get('x-forwarded-proto');
       const xHost = req.get('x-forwarded-host');
@@ -317,13 +339,13 @@ async function startServer() {
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content="معرض الفنون" />
     <meta property="og:url" content="${fullUrl}" />
-    <meta property="og:title" content="${rawTitle} - بريشة الفنان ${artist}" />
+    <meta property="og:title" content="${rawTitle} - ${prefix} ${artist}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:secure_url" content="${imageUrl}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="${rawTitle} - بريشة الفنان ${artist}" />
+    <meta property="og:image:alt" content="${rawTitle} - ${prefix} ${artist}" />
     <meta property="og:image:type" content="image/jpeg" />
 
     <!-- Twitter / X Summary Large Image Card -->
@@ -331,7 +353,7 @@ async function startServer() {
     <meta name="twitter:site" content="@ArabArtGallery" />
     <meta name="twitter:domain" content="${host}" />
     <meta name="twitter:url" content="${fullUrl}" />
-    <meta name="twitter:title" content="${rawTitle} - بريشة الفنان ${artist}" />
+    <meta name="twitter:title" content="${rawTitle} - ${prefix} ${artist}" />
     <meta name="twitter:description" content="${description}" />
     <meta name="twitter:image" content="${imageUrl}" />
     <meta name="twitter:image:src" content="${imageUrl}" />

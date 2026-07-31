@@ -3,7 +3,7 @@ import { Artwork } from '../types';
 import { ArtworkFrame } from './ArtworkFrame';
 import { getOptimizedImageUrl } from '../lib/cloudinary';
 import { Heart, MessageCircle, Eye, Sparkles, AlertCircle, Clock, CheckCircle2, Star, Bookmark } from 'lucide-react';
-import { getArtworkRatingMeta } from '../lib/artworks';
+import { getArtworkRatingMeta, getArtistPrefix } from '../lib/artworks';
 import { isArtworkFavorite, toggleFavoriteArtwork, FAVORITE_EVENT } from '../lib/favorites';
 import { useAuth } from '../context/AuthContext';
 
@@ -156,7 +156,7 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({ artwork, onClick, show
             {artwork.title}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-            بريشة الفنان / {artwork.artistName}
+            {getArtistPrefix(artwork.category)} / {artwork.artistName}
           </p>
         </div>
 

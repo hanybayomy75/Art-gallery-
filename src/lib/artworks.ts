@@ -33,6 +33,27 @@ export const ARTWORK_CATEGORIES = DEFAULT_CATEGORIES.filter(
   (c) => c !== 'الكل'
 );
 
+export function isPhotographyCategory(category?: string): boolean {
+  if (!category) return false;
+  const clean = category.trim().toLowerCase();
+  return (
+    clean === 'تصوير فوتوغرافي' ||
+    clean === 'تصوير' ||
+    clean === 'فوتوغرافي' ||
+    clean === 'photography' ||
+    clean === 'photo' ||
+    clean.includes('تصوير') ||
+    clean.includes('photograph')
+  );
+}
+
+export function getArtistPrefix(category?: string): string {
+  if (isPhotographyCategory(category)) {
+    return 'تصوير الفنان';
+  }
+  return 'بريشة الفنان';
+}
+
 const LOCAL_STORAGE_KEY = 'local_user_uploaded_artworks';
 
 export function getLocalUserArtworks(): Artwork[] {
@@ -160,8 +181,13 @@ export async function fetchApprovedArtworks(
   }
 
   if (effectiveCategory !== 'الكل' && effectiveCategory !== 'أعمال الفنانين المرفوعة') {
+    const isPhotoSearch = isPhotographyCategory(effectiveCategory);
     finalCombined = finalCombined.filter((art) => {
       const artCat = (art.category || '').trim();
+      if (isPhotoSearch) {
+        if (isPhotographyCategory(artCat)) return true;
+        if (art.tags?.some((t) => isPhotographyCategory(t))) return true;
+      }
       if (artCat === effectiveCategory) return true;
       if (art.tags?.some((t) => (t || '').trim() === effectiveCategory)) return true;
       if (effectiveCategory === 'لوحات فنية' && (!ARTWORK_CATEGORIES.includes(artCat) || artCat === 'لوحات فنية')) return true;

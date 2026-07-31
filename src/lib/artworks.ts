@@ -10,7 +10,8 @@ import {
   where, 
   limit, 
   runTransaction, 
-  increment 
+  increment,
+  onSnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { Artwork, ArtworkComment, ArtworkStatus, SortOption } from '../types';
@@ -120,53 +121,15 @@ export function notifyArtworkChange(): void {
   }
 }
 
-export async function fetchApprovedArtworks(
+// Helper function to process raw approved artworks with filtering and sorting
+function processApprovedArtworksList(
+  rawList: Artwork[],
   categoryFilter: string = 'الكل',
   searchQuery: string = '',
   sortOption: SortOption = 'newest',
-  limitCount: number = 100,
-  currentUserId?: string
-): Promise<Artwork[]> {
-  const approvedMap = new Map<string, Artwork>();
-
-  // 1. Query Firestore specifically for status == 'approved'
-  try {
-    const artworksRef = collection(db, 'artworks');
-    const qApproved = query(artworksRef, where('status', '==', 'approved'));
-    const snap = await getDocs(qApproved);
-    snap.forEach((docSnap) => {
-      const data = docSnap.data() as Artwork;
-      approvedMap.set(docSnap.id, { id: docSnap.id, ...data, status: 'approved' });
-    });
-  } catch (error) {
-    console.warn('Notice: Error fetching Firestore approved artworks:', error);
-  }
-
-  // 2. Query legacy documents without a status field
-  try {
-    const artworksRef = collection(db, 'artworks');
-    const snapAll = await getDocs(artworksRef);
-    snapAll.forEach((docSnap) => {
-      const data = docSnap.data() as any;
-      if (!data.status || data.status === 'approved' || data.status === 'published') {
-        if (!approvedMap.has(docSnap.id)) {
-          approvedMap.set(docSnap.id, { id: docSnap.id, ...data, status: 'approved' });
-        }
-      }
-    });
-  } catch (e) {
-    // Ignore permissions fallback
-  }
-
-  // 3. Add approved items from device local storage
-  const localList = getLocalUserArtworks();
-  localList.forEach((art) => {
-    if (art && art.id && art.status === 'approved') {
-      approvedMap.set(art.id, art);
-    }
-  });
-
-  let finalCombined = Array.from(approvedMap.values());
+  limitCount: number = 500
+): Artwork[] {
+  let finalCombined = [...rawList];
 
   // Category filter
   const cleanFilter = (categoryFilter || 'الكل').trim();
@@ -226,7 +189,11 @@ export async function fetchApprovedArtworks(
       return (bMeta.ratingAverage - aMeta.ratingAverage) || (bMeta.ratingCount - aMeta.ratingCount);
     });
   } else if (sortOption === 'newest') {
-    finalCombined.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    finalCombined.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
   }
 
   // Deduplicate by artwork ID & imageUrl
@@ -245,6 +212,133 @@ export async function fetchApprovedArtworks(
   });
 
   return Array.from(uniqueMap.values()).slice(0, limitCount);
+}
+
+// Realtime Firestore subscription for approved artworks (guarantees identical data for all accounts & guests)
+export function subscribeToApprovedArtworks(
+  onUpdate: (artworks: Artwork[]) => void,
+  categoryFilter: string = 'الكل',
+  searchQuery: string = '',
+  sortOption: SortOption = 'newest',
+  limitCount: number = 500
+): () => void {
+  // Trigger immediate fetch so UI updates without delay
+  fetchApprovedArtworks(categoryFilter, searchQuery, sortOption, limitCount).then((initialList) => {
+    onUpdate(initialList);
+  });
+
+  const artworksRef = collection(db, 'artworks');
+  const qApproved = query(artworksRef, where('status', '==', 'approved'));
+
+  const unsubscribe = onSnapshot(
+    qApproved,
+    (snap) => {
+      const approvedMap = new Map<string, Artwork>();
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        const normalizedStatus = (data.status || 'approved').toString().trim().toLowerCase();
+        if (normalizedStatus === 'approved' || normalizedStatus === 'published' || normalizedStatus === 'accepted') {
+          const userId = data.userId || data.ownerId || data.artistId || data.uploadedBy || '';
+          approvedMap.set(docSnap.id, {
+            id: docSnap.id,
+            ...data,
+            userId,
+            status: 'approved'
+          } as Artwork);
+        }
+      });
+
+      // Merge local storage user artworks
+      const localList = getLocalUserArtworks();
+      localList.forEach((art) => {
+        const st = art?.status ? String(art.status) : '';
+        if (art && art.id && (st === 'approved' || st === 'published' || !st)) {
+          if (!approvedMap.has(art.id)) {
+            approvedMap.set(art.id, { ...art, status: 'approved' });
+          }
+        }
+      });
+
+      const rawList = Array.from(approvedMap.values());
+      const processed = processApprovedArtworksList(rawList, categoryFilter, searchQuery, sortOption, limitCount);
+      onUpdate(processed);
+    },
+    (error) => {
+      console.warn('Notice: Error in Firestore approved artworks snapshot, using fallback fetch:', error);
+      fetchApprovedArtworks(categoryFilter, searchQuery, sortOption, limitCount).then(onUpdate);
+    }
+  );
+
+  return unsubscribe;
+}
+
+export async function fetchApprovedArtworks(
+  categoryFilter: string = 'الكل',
+  searchQuery: string = '',
+  sortOption: SortOption = 'newest',
+  limitCount: number = 500,
+  _currentUserId?: string
+): Promise<Artwork[]> {
+  const approvedMap = new Map<string, Artwork>();
+
+  // 1. Primary query for approved artworks
+  try {
+    const artworksRef = collection(db, 'artworks');
+    const qApproved = query(artworksRef, where('status', '==', 'approved'));
+    const snap = await getDocs(qApproved);
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const normalizedStatus = (data.status || 'approved').toString().trim().toLowerCase();
+      if (normalizedStatus === 'approved' || normalizedStatus === 'published' || normalizedStatus === 'accepted') {
+        const userId = data.userId || data.ownerId || data.artistId || data.uploadedBy || '';
+        approvedMap.set(docSnap.id, {
+          id: docSnap.id,
+          ...data,
+          userId,
+          status: 'approved'
+        } as Artwork);
+      }
+    });
+  } catch (error) {
+    console.warn('Notice: Error fetching Firestore approved artworks:', error);
+  }
+
+  // 2. Secondary fallback query for documents without status or with published status
+  try {
+    const artworksRef = collection(db, 'artworks');
+    const snapAll = await getDocs(artworksRef);
+    snapAll.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      const st = (data.status || 'approved').toString().trim().toLowerCase();
+      if (st === 'approved' || st === 'published' || st === 'accepted') {
+        if (!approvedMap.has(docSnap.id)) {
+          const userId = data.userId || data.ownerId || data.artistId || data.uploadedBy || '';
+          approvedMap.set(docSnap.id, {
+            id: docSnap.id,
+            ...data,
+            userId,
+            status: 'approved'
+          } as Artwork);
+        }
+      }
+    });
+  } catch (e) {
+    // Ignore permissions check error for unauthenticated visitors
+  }
+
+  // 3. Local storage artworks fallback
+  const localList = getLocalUserArtworks();
+  localList.forEach((art) => {
+    const st = art?.status ? String(art.status) : '';
+    if (art && art.id && (st === 'approved' || st === 'published' || !st)) {
+      if (!approvedMap.has(art.id)) {
+        approvedMap.set(art.id, { ...art, status: 'approved' });
+      }
+    }
+  });
+
+  const rawList = Array.from(approvedMap.values());
+  return processApprovedArtworksList(rawList, categoryFilter, searchQuery, sortOption, limitCount);
 }
 
 export async function fetchArtworkById(artId: string): Promise<Artwork | null> {

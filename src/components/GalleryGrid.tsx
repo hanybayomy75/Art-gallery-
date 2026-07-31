@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Artwork, SortOption } from '../types';
-import { fetchApprovedArtworks, DEFAULT_CATEGORIES } from '../lib/artworks';
+import { fetchApprovedArtworks, subscribeToApprovedArtworks, DEFAULT_CATEGORIES } from '../lib/artworks';
 import { ArtworkCard } from './ArtworkCard';
 import { Search, SlidersHorizontal, Sparkles, Filter, RefreshCw, Upload, Crown, Layers } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -34,32 +34,30 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
     setInternalCategory(cat);
   };
 
-  const loadArtworks = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchApprovedArtworks(selectedCategory, searchQuery, sortOption, 60, user?.uid);
-      setArtworks(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadArtworks();
-    const handleRefresh = () => loadArtworks();
+    setLoading(true);
+    const unsubscribe = subscribeToApprovedArtworks((data) => {
+      setArtworks(data);
+      setLoading(false);
+    }, selectedCategory, searchQuery, sortOption, 500);
+
+    const handleRefresh = () => {
+      fetchApprovedArtworks(selectedCategory, searchQuery, sortOption, 500).then(setArtworks);
+    };
+
     window.addEventListener('artwork_changed', handleRefresh);
     window.addEventListener('artwork_uploaded', handleRefresh);
+
     return () => {
+      unsubscribe();
       window.removeEventListener('artwork_changed', handleRefresh);
       window.removeEventListener('artwork_uploaded', handleRefresh);
     };
-  }, [selectedCategory, searchQuery, sortOption, user?.uid]);
+  }, [selectedCategory, searchQuery, sortOption]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loadArtworks();
+    fetchApprovedArtworks(selectedCategory, searchQuery, sortOption, 500).then(setArtworks);
   };
 
   return (

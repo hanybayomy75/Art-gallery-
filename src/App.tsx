@@ -12,7 +12,7 @@ import { Footer } from './components/Footer';
 import { MyProfilePage } from './pages/MyProfilePage';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { Artwork } from './types';
-import { fetchArtworkById, fetchApprovedArtworks, DEFAULT_CATEGORIES } from './lib/artworks';
+import { fetchArtworkById, subscribeToApprovedArtworks, DEFAULT_CATEGORIES } from './lib/artworks';
 
 
 function MainApp() {
@@ -20,10 +20,10 @@ function MainApp() {
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
 
-  // Hero Stats
+  // Dynamic Hero Stats
   const [heroStats, setHeroStats] = useState({
-    totalWorks: 12,
-    totalLikes: 48,
+    totalWorks: 0,
+    totalLikes: 0,
     totalCategories: DEFAULT_CATEGORIES.length - 1
   });
 
@@ -40,7 +40,7 @@ function MainApp() {
     }, 100);
   };
 
-  // Handle direct URL navigation to /art/:id
+  // Handle direct URL navigation to /art/:id & subscribe to realtime stats
   useEffect(() => {
     const path = window.location.pathname;
     if (path.startsWith('/art/')) {
@@ -54,17 +54,17 @@ function MainApp() {
       }
     }
 
-    // Load overall hero metrics
-    fetchApprovedArtworks('الكل', '', 'newest', 100).then((list) => {
-      if (list.length > 0) {
-        const likes = list.reduce((acc, curr) => acc + (curr.likesCount || 0), 0);
-        setHeroStats({
-          totalWorks: list.length,
-          totalLikes: likes,
-          totalCategories: DEFAULT_CATEGORIES.length - 1
-        });
-      }
-    });
+    // Subscribe to overall hero metrics dynamically from approved artworks
+    const unsubscribe = subscribeToApprovedArtworks((list) => {
+      const likes = list.reduce((acc, curr) => acc + (curr.likesCount || 0), 0);
+      setHeroStats({
+        totalWorks: list.length,
+        totalLikes: likes,
+        totalCategories: DEFAULT_CATEGORIES.length - 1
+      });
+    }, 'الكل', '', 'newest', 500);
+
+    return () => unsubscribe();
   }, []);
 
   const handleSelectArtwork = (art: Artwork) => {

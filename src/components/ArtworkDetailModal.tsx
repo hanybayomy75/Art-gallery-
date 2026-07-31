@@ -498,7 +498,11 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
           {/* Left / Top Side: Main Image Frame */}
           <div className="md:w-3/5 bg-slate-950 relative flex flex-col items-center justify-between p-3 sm:p-4 group overflow-y-auto min-h-0 max-h-full custom-scrollbar">
-            <div className="flex-1 flex items-center justify-center my-auto w-full p-2">
+            <div 
+              onClick={() => setIsLightboxOpen(true)}
+              className="flex-1 flex items-center justify-center my-auto w-full p-2 cursor-pointer relative group/img"
+              title="انقر لتكبير الصورة بملء الشاشة"
+            >
               <ArtworkFrame
                 src={highResUrl}
                 alt={artwork.title}
@@ -508,6 +512,20 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                 className="max-h-[45vh] md:max-h-[55vh]"
                 imgClassName="max-h-[40vh] md:max-h-[50vh] w-auto object-contain shadow-2xl"
               />
+
+              {/* Floating Mobile/Desktop Fullscreen Zoom Button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsLightboxOpen(true);
+                }}
+                className="absolute top-3 right-3 z-30 min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-black/75 hover:bg-black/90 text-white backdrop-blur-md border border-white/20 shadow-xl flex items-center justify-center gap-1.5 text-xs font-bold transition-all active:scale-95"
+                title="عرض ملء الشاشة (Fullscreen)"
+              >
+                <Maximize2 className="w-4 h-4 text-amber-400" />
+                <span className="hidden sm:inline">تكبير الشاشة</span>
+              </button>
             </div>
 
             {/* Frame & Filter Controls Bar */}
@@ -989,63 +1007,77 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
       {/* Enhanced Lightbox Fullscreen Modal */}
       {isLightboxOpen && (
-        <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-6 animate-in fade-in duration-300">
-          {/* Header Bar */}
-          <div className="w-full flex items-center justify-between text-white z-50">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-bold font-serif line-clamp-1">{artwork.title}</span>
-              <span className="text-xs text-slate-400 font-sans shrink-0">({getArtistPrefix(artwork.category)}: {artwork.artistName})</span>
+        <div 
+          className="fixed inset-0 z-[99999] w-screen h-screen h-[100dvh] bg-black/95 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-6 animate-in fade-in duration-300 select-none overflow-hidden"
+          dir="rtl"
+        >
+          {/* Header Bar with Safe Touch Areas */}
+          <div className="w-full flex items-center justify-between text-white z-50 gap-2 pb-2 border-b border-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 overflow-hidden">
+              <span className="text-sm font-bold font-serif line-clamp-1 text-amber-300">{artwork.title}</span>
+              <span className="text-xs text-slate-400 font-sans truncate">({getArtistPrefix(artwork.category)}: {artwork.artistName})</span>
             </div>
-            <div className="flex items-center gap-2">
+            
+            <div className="flex items-center gap-2 shrink-0">
               <button
-                onClick={() => setZoomLevel((z) => Math.min(z + 0.5, 3))}
-                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all shadow-md"
+                type="button"
+                onClick={() => setZoomLevel((z) => Math.min(z + 0.5, 3.5))}
+                className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
                 title="تكبير (Zoom in)"
               >
                 <ZoomIn className="w-5 h-5" />
               </button>
               <button
+                type="button"
                 onClick={() => setZoomLevel((z) => Math.max(z - 0.5, 1))}
-                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all shadow-md"
+                className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
                 title="تصغير (Zoom out)"
               >
                 <ZoomOut className="w-5 h-5" />
               </button>
               <button
+                type="button"
                 onClick={() => setZoomLevel(1)}
-                className="p-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all shadow-md text-xs font-bold"
-                title="إعادة التكبير"
+                className="min-w-[44px] min-h-[44px] p-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md text-xs font-bold flex items-center justify-center"
+                title="إعادة التكبير (1:1)"
               >
                 1:1
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setIsLightboxOpen(false);
                   setZoomLevel(1);
                 }}
-                className="p-2.5 rounded-full bg-rose-600/90 hover:bg-rose-600 text-white transition-all shadow-md"
-                title="إغلاق"
+                className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
+                title="إغلاق (Close)"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
           </div>
 
-          {/* Main Image View Container */}
-          <div className="relative flex-1 w-full flex items-center justify-center overflow-auto my-3 p-2 custom-scrollbar">
-            <img
+          {/* Main Image View Container with Mobile Touch Zoom */}
+          <div 
+            className="relative flex-1 w-full flex items-center justify-center overflow-auto my-2 p-2 custom-scrollbar touch-pan-x touch-pan-y"
+            onDoubleClick={() => setZoomLevel((z) => (z > 1 ? 1 : 2))}
+          >
+            <ArtworkFrame
               src={artwork.imageUrl}
               alt={artwork.title}
-              referrerPolicy="no-referrer"
-              style={{ transform: `scale(${zoomLevel})` }}
-              className="max-w-full max-h-full object-contain transition-transform duration-200 select-none shadow-2xl rounded-lg"
+              frameStyle={activeFrame}
+              filterStyle={activeFilter}
+              rotation={activeRotation}
+              className="max-w-full max-h-full flex items-center justify-center"
+              imgClassName="max-w-full max-h-[85vh] object-contain transition-transform duration-200 select-none shadow-2xl rounded-md cursor-zoom-in"
             />
           </div>
 
-          {/* Footer Guide */}
-          <p className="text-xs text-slate-400 text-center z-50">
-            اضغط على أدوات التكبير أو اسحب بأصابعك للتحكم في الصورة بمرونة في وضع ملء الشاشة.
-          </p>
+          {/* Footer Mobile Touch Guide */}
+          <div className="w-full flex items-center justify-between text-xs text-slate-400 z-50 pt-2 border-t border-white/10">
+            <span>انقر مرتين للتكبير / التصغير</span>
+            <span className="font-bold text-amber-400">مستوى التكبير: {Math.round(zoomLevel * 100)}%</span>
+          </div>
         </div>
       )}
     </>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Artwork, ArtworkComment, FrameStyle, FilterStyle } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -21,8 +21,6 @@ import {
   getArtistPrefix
 } from '../lib/artworks';
 import { addAppNotification } from '../lib/notifications';
-import { sendEmailNotification, getArtistEmailSettings } from '../lib/emailService';
-
 import { getOptimizedImageUrl, getSocialShareImageUrl } from '../lib/cloudinary';
 import { 
   X, 
@@ -70,6 +68,102 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const [submittingComment, setSubmittingComment] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const initialPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const initialPinchDistRef = useRef<number | null>(null);
+  const initialZoomRef = useRef<number>(1);
+
+  const handleSetZoom = (newZoom: number | ((prev: number) => number)) => {
+    setZoomLevel((prev) => {
+      const next = typeof newZoom === 'function' ? newZoom(prev) : newZoom;
+      const clamped = Math.min(Math.max(next, 1), 4);
+      if (clamped <= 1) {
+        setPanPosition({ x: 0, y: 0 });
+      }
+      return clamped;
+    });
+  };
+
+  const handleCloseLightbox = () => {
+    setIsLightboxOpen(false);
+    setZoomLevel(1);
+    setPanPosition({ x: 0, y: 0 });
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      initialPinchDistRef.current = dist;
+      initialZoomRef.current = zoomLevel;
+    } else if (e.touches.length === 1 && zoomLevel > 1) {
+      setIsDragging(true);
+      dragStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      initialPanRef.current = { ...panPosition };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2 && initialPinchDistRef.current) {
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      const scale = dist / initialPinchDistRef.current;
+      const nextZoom = Math.min(Math.max(initialZoomRef.current * scale, 1), 4);
+      setZoomLevel(nextZoom);
+      if (nextZoom <= 1) {
+        setPanPosition({ x: 0, y: 0 });
+      }
+    } else if (e.touches.length === 1 && isDragging && zoomLevel > 1) {
+      const dx = e.touches[0].clientX - dragStartRef.current.x;
+      const dy = e.touches[0].clientY - dragStartRef.current.y;
+      setPanPosition({
+        x: initialPanRef.current.x + dx,
+        y: initialPanRef.current.y + dy
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    initialPinchDistRef.current = null;
+    setIsDragging(false);
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoomLevel > 1) {
+      setIsDragging(true);
+      dragStartRef.current = { x: e.clientX, y: e.clientY };
+      initialPanRef.current = { ...panPosition };
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging && zoomLevel > 1) {
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      setPanPosition({
+        x: initialPanRef.current.x + dx,
+        y: initialPanRef.current.y + dy
+      });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.deltaY < 0) {
+      handleSetZoom((z) => z + 0.25);
+    } else {
+      handleSetZoom((z) => z - 0.25);
+    }
+  };
   const [copiedLink, setCopiedLink] = useState(false);
   const [relatedWorks, setRelatedWorks] = useState<Artwork[]>([]);
   const [likeAnimating, setLikeAnimating] = useState(false);
@@ -287,26 +381,6 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     });
     setRatingToast(true);
     setTimeout(() => setRatingToast(false), 2500);
-
-    const senderName = userProfile?.artistName || userProfile?.displayName || 'زائر المعرض';
-
-    // Send offline email summary to artist if enabled
-    if (artwork.userId && artwork.userId !== user?.uid) {
-      const targetSettings = getArtistEmailSettings(artwork.userId);
-      const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
-      if (targetSettings.enabled && targetSettings.notifyRatings && targetEmail) {
-        sendEmailNotification({
-          artistEmail: targetEmail,
-          artistName: artwork.artistName || 'الفنان',
-          interactionType: 'rating',
-          senderName,
-          artTitle: artwork.title,
-          artId: artwork.id,
-          artImageUrl: artwork.imageUrl,
-          messageContent: `قام ${senderName} بتزويد عملك الفني "${artwork.title}" بتقييم قدره ${stars} نجوم! ⭐`
-        }).catch(() => {});
-      }
-    }
   };
 
   const shareUrl = `${window.location.origin}/art/${artwork.id}`;
@@ -315,24 +389,6 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     if (!artwork) return;
     const newStatus = await toggleFavoriteArtwork(artwork, user?.uid, userProfile || undefined);
     setIsFav(newStatus);
-
-    if (newStatus && artwork.userId && artwork.userId !== user?.uid) {
-      const senderName = userProfile?.artistName || userProfile?.displayName || 'مستكشف الفنون';
-      const targetSettings = getArtistEmailSettings(artwork.userId);
-      const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
-      if (targetSettings.enabled && targetSettings.notifyFavorites && targetEmail) {
-        sendEmailNotification({
-          artistEmail: targetEmail,
-          artistName: artwork.artistName || 'الفنان',
-          interactionType: 'favorite',
-          senderName,
-          artTitle: artwork.title,
-          artId: artwork.id,
-          artImageUrl: artwork.imageUrl,
-          messageContent: `قام ${senderName} بحفظ لوحتك "${artwork.title}" في قائمته المفضلة! 🔖`
-        }).catch(() => {});
-      }
-    }
   };
 
   const handleLikeToggle = async () => {
@@ -348,24 +404,6 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
       try {
         await toggleLikeArtwork(artwork.id, user.uid, userProfile || undefined);
-
-        if (newLikedState && artwork.userId && artwork.userId !== user.uid) {
-          const senderName = userProfile?.artistName || userProfile?.displayName || 'فنان معارض';
-          const targetSettings = getArtistEmailSettings(artwork.userId);
-          const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
-          if (targetSettings.enabled && targetSettings.notifyLikes && targetEmail) {
-            sendEmailNotification({
-              artistEmail: targetEmail,
-              artistName: artwork.artistName || 'الفنان',
-              interactionType: 'like',
-              senderName,
-              artTitle: artwork.title,
-              artId: artwork.id,
-              artImageUrl: artwork.imageUrl,
-              messageContent: `أبدى ${senderName} إعجابه بعملائك الفني الرائع "${artwork.title}" ❤️`
-            }).catch(() => {});
-          }
-        }
       } catch (err) {
         // Revert on failure
         setIsLiked(!newLikedState);
@@ -392,28 +430,6 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
           textToComment
         );
         setCommentText('');
-
-        const senderName = userProfile.artistName || userProfile.displayName || 'فنان معارض';
-        const trimmedComment = textToComment.trim();
-
-        // Send offline email summary to artist if enabled
-        if (artwork.userId && artwork.userId !== user.uid) {
-          const targetSettings = getArtistEmailSettings(artwork.userId);
-          const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
-          if (targetSettings.enabled && targetSettings.notifyComments && targetEmail) {
-            sendEmailNotification({
-              artistEmail: targetEmail,
-              artistName: artwork.artistName || 'الفنان',
-              interactionType: 'comment',
-              senderName,
-              artTitle: artwork.title,
-              artId: artwork.id,
-              artImageUrl: artwork.imageUrl,
-              messageContent: `كتب ${senderName} تعليقاً جديداً: "${trimmedComment}"`
-            }).catch(() => {});
-          }
-        }
-
 
         // Refresh comments list
         const updated = await fetchArtworkComments(artwork.id);
@@ -984,78 +1000,115 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
         </div>
       </div>
 
-      {/* Enhanced Lightbox Fullscreen Modal */}
+      {/* Enhanced Lightbox Fullscreen Modal with Touch Zoom & Pan */}
       {isLightboxOpen && (
         <div 
           className="fixed inset-0 z-[99999] w-screen h-screen h-[100dvh] bg-black/95 backdrop-blur-md flex flex-col items-center justify-between p-3 sm:p-6 animate-in fade-in duration-300 select-none overflow-hidden"
           dir="rtl"
         >
-          {/* Header Bar with Safe Touch Areas */}
-          <div className="w-full flex items-center justify-between text-white z-50 gap-2 pb-2 border-b border-white/10">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-1 overflow-hidden">
+          {/* Header Bar with Zoom Controls */}
+          <div className="w-full flex flex-wrap items-center justify-between text-white z-50 gap-2 pb-2 border-b border-white/10">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-1 overflow-hidden max-w-[50%]">
               <span className="text-sm font-bold font-serif line-clamp-1 text-amber-300">{artwork.title}</span>
               <span className="text-xs text-slate-400 font-sans truncate">({getArtistPrefix(artwork.category)}: {artwork.artistName})</span>
             </div>
             
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setZoomLevel((z) => Math.min(z + 0.5, 3.5))}
-                className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
+                onClick={() => handleSetZoom((z) => Math.min(z + 0.5, 4))}
+                className="min-w-[40px] min-h-[40px] p-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
                 title="تكبير (Zoom in)"
               >
                 <ZoomIn className="w-5 h-5" />
               </button>
               <button
                 type="button"
-                onClick={() => setZoomLevel((z) => Math.max(z - 0.5, 1))}
-                className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
+                onClick={() => handleSetZoom((z) => Math.max(z - 0.5, 1))}
+                className="min-w-[40px] min-h-[40px] p-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
                 title="تصغير (Zoom out)"
               >
                 <ZoomOut className="w-5 h-5" />
               </button>
+
+              {/* Quick Zoom Presets */}
               <button
                 type="button"
-                onClick={() => setZoomLevel(1)}
-                className="min-w-[44px] min-h-[44px] p-2 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md text-xs font-bold flex items-center justify-center"
+                onClick={() => handleSetZoom(1.5)}
+                className={`px-2 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+                  zoomLevel === 1.5 ? 'bg-amber-500 text-black' : 'bg-white/10 hover:bg-white/20 text-white'
+                }`}
+              >
+                1.5x
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetZoom(2.5)}
+                className={`px-2 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+                  zoomLevel === 2.5 ? 'bg-amber-500 text-black' : 'bg-white/10 hover:bg-white/20 text-white'
+                }`}
+              >
+                2.5x
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSetZoom(1)}
+                className="min-w-[40px] min-h-[40px] px-2 py-1 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white transition-all shadow-md text-xs font-bold flex items-center justify-center"
                 title="إعادة التكبير (1:1)"
               >
                 1:1
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setIsLightboxOpen(false);
-                  setZoomLevel(1);
-                }}
-                className="min-w-[44px] min-h-[44px] p-2.5 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
+                onClick={handleCloseLightbox}
+                className="min-w-[40px] min-h-[40px] p-2 rounded-full bg-rose-600 hover:bg-rose-700 active:scale-95 text-white transition-all shadow-md flex items-center justify-center"
                 title="إغلاق (Close)"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
           </div>
 
-          {/* Main Image View Container with Mobile Touch Zoom */}
+          {/* Main Interactive Zoomable & Pannable Viewport */}
           <div 
-            className="relative flex-1 w-full flex items-center justify-center overflow-auto my-2 p-2 custom-scrollbar touch-pan-x touch-pan-y"
-            onDoubleClick={() => setZoomLevel((z) => (z > 1 ? 1 : 2))}
+            className="relative flex-1 w-full flex items-center justify-center overflow-hidden my-2 p-2 touch-none select-none cursor-grab active:cursor-grabbing"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onWheel={handleWheel}
+            onDoubleClick={() => handleSetZoom((z) => (z > 1 ? 1 : 2.5))}
           >
-            <ArtworkFrame
-              src={artwork.imageUrl}
-              alt={artwork.title}
-              frameStyle={activeFrame}
-              filterStyle={activeFilter}
-              rotation={activeRotation}
-              className="max-w-full max-h-full flex items-center justify-center"
-              imgClassName="max-w-full max-h-[85vh] object-contain transition-transform duration-200 select-none shadow-2xl rounded-md cursor-zoom-in"
-            />
+            <div 
+              className="relative max-w-full max-h-full flex items-center justify-center transition-transform"
+              style={{
+                transform: `translate3d(${panPosition.x}px, ${panPosition.y}px, 0px) scale(${zoomLevel})`,
+                transformOrigin: 'center center',
+                transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                willChange: 'transform'
+              }}
+            >
+              <ArtworkFrame
+                src={artwork.imageUrl}
+                alt={artwork.title}
+                frameStyle={activeFrame}
+                filterStyle={activeFilter}
+                rotation={activeRotation}
+                className="max-w-full max-h-full flex items-center justify-center"
+                imgClassName="max-w-full max-h-[78vh] object-contain select-none shadow-2xl rounded-md pointer-events-none"
+              />
+            </div>
           </div>
 
           {/* Footer Mobile Touch Guide */}
           <div className="w-full flex items-center justify-between text-xs text-slate-400 z-50 pt-2 border-t border-white/10">
-            <span>انقر مرتين للتكبير / التصغير</span>
-            <span className="font-bold text-amber-400">مستوى التكبير: {Math.round(zoomLevel * 100)}%</span>
+            <span className="text-[11px] sm:text-xs">
+              {zoomLevel > 1 ? 'اسحب باليد للتحريك • انقر مرتين لإعادة الضبط' : 'قرص الأصابع للتكبير • انقر مرتين للتكبير'}
+            </span>
+            <span className="font-bold text-amber-400 text-xs">مستوى التكبير: {Math.round(zoomLevel * 100)}%</span>
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { ContactModal } from './ContactModal';
 import { NotificationCenter } from './NotificationCenter';
 import { THEME_PRESETS } from '../lib/theme';
+import { SiteLogo } from './SiteLogo';
 import { 
   Palette, 
   Upload, 
@@ -79,17 +80,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView, onSel
               </button>
 
               <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveView('home')}>
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[var(--color-primary)] to-[var(--color-accent)] p-0.5 shadow-md flex items-center justify-center">
-                  <div className="w-full h-full bg-[var(--bg-card)] rounded-[14px] flex items-center justify-center">
-                    <Sparkles className="w-6 h-6 text-[var(--color-primary)]" />
-                  </div>
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-1.5 font-serif">
-                    معرض الفنون
-                  </h1>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">المنصة العربية الفنية الأولى</p>
-                </div>
+                <SiteLogo size="md" showText={true} />
               </div>
             </div>
 

@@ -13,7 +13,7 @@ import {
   NOTIFICATION_EVENT 
 } from '../lib/notifications';
 import { AppNotification } from '../types';
-import { Bell, Heart, MessageSquare, Star, Sparkles, Check, Trash2, X } from 'lucide-react';
+import { Bell, Heart, MessageSquare, Star, Sparkles, Check, Trash2, X, HeartHandshake, ShieldCheck } from 'lucide-react';
 
 interface NotificationCenterProps {
   onSelectArtwork?: (artId: string, notif?: AppNotification) => void;
@@ -245,6 +245,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onSelect
                   notifIcon = <MessageSquare className="w-4 h-4 text-blue-500 fill-blue-500/20" />;
                 } else if (notif.type === 'rating') {
                   notifIcon = <Star className="w-4 h-4 text-amber-400 fill-amber-400" />;
+                } else if (notif.type === 'system') {
+                  notifIcon = <HeartHandshake className="w-4 h-4 text-amber-500 fill-amber-500/20" />;
                 }
 
                 return (

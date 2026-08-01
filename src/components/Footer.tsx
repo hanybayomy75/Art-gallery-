@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, Heart, PhoneCall, Mail } from 'lucide-react';
+import { Heart, PhoneCall, Mail } from 'lucide-react';
 import { ContactModal } from './ContactModal';
+import { SiteLogo } from './SiteLogo';
 
 export const Footer: React.FC = () => {
   const [isContactOpen, setIsContactOpen] = useState(false);
@@ -10,11 +11,8 @@ export const Footer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-6">
         
         {/* Brand */}
-        <div className="flex items-center justify-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-[var(--color-primary)] text-white flex items-center justify-center shadow-md">
-            <Sparkles className="w-5 h-5" />
-          </div>
-          <span className="text-xl font-bold font-serif text-slate-900 dark:text-white">معرض الفنون</span>
+        <div className="flex items-center justify-center">
+          <SiteLogo size="lg" showText={true} />
         </div>
 
         <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">

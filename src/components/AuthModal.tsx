@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { X, Mail, Lock, User, Sparkles, AlertCircle, Copy, Check } from 'lucide-react';
+import { SiteLogo } from './SiteLogo';
 
 export const AuthModal: React.FC = () => {
   const { 
@@ -113,10 +114,8 @@ export const AuthModal: React.FC = () => {
         </button>
 
         {/* Modal Header */}
-        <div className="text-center space-y-2 mb-6">
-          <div className="w-12 h-12 rounded-2xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] mx-auto flex items-center justify-center mb-2">
-            <Sparkles className="w-6 h-6" />
-          </div>
+        <div className="text-center space-y-2 mb-6 flex flex-col items-center">
+          <SiteLogo size="lg" showText={false} />
           <h2 className="text-2xl font-bold font-serif text-slate-900 dark:text-white">
             {mode === 'login' ? 'مرحبًا بك مجددًا' : 'إنشاء حساب جديد'}
           </h2>

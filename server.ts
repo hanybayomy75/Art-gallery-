@@ -304,9 +304,14 @@ async function startServer() {
     }
   });
 
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`معرض الفنون - Express server running on http://0.0.0.0:${PORT}`);
   });
 }
 
+}
+
 startServer();
+
+export default app;

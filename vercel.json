@@ -1,6 +1,8 @@
 {
+  "version": 2,
   "rewrites": [
-    { "source": "/art/:id*", "destination": "/index.html" },
+    { "source": "/art/:id*", "destination": "/api" },
+    { "source": "/api/:path*", "destination": "/api" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

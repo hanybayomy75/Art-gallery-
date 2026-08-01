@@ -26,18 +26,18 @@ const fbApp = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const databaseId = firebaseConfigData.firestoreDatabaseId || '(default)';
 const db = getFirestore(fbApp, databaseId);
 
-// Helper to generate social share Cloudinary or Unsplash URL (1200x630 format)
+// Helper to generate social share Cloudinary or Unsplash URL (1200x630 JPEG format)
 function getSocialImageUrl(url: string): string {
-  if (!url) return 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop';
+  if (!url) return 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop&q=85&fm=jpg';
   if (url.includes('cloudinary.com')) {
     const uploadIndex = url.indexOf('/upload/');
     if (uploadIndex !== -1) {
-      return url.slice(0, uploadIndex + 8) + 'f_auto,q_auto,w_1200,h_630,c_fill,g_auto/' + url.slice(uploadIndex + 8);
+      return url.slice(0, uploadIndex + 8) + 'f_jpg,q_auto,w_1200,h_630,c_pad,b_auto:predominant/' + url.slice(uploadIndex + 8);
     }
   }
   if (url.includes('images.unsplash.com')) {
     const baseUrl = url.split('?')[0];
-    return `${baseUrl}?w=1200&h=630&fit=crop&q=85`;
+    return `${baseUrl}?w=1200&h=630&fit=crop&q=85&fm=jpg`;
   }
   return url;
 }
@@ -68,9 +68,10 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', name: 'معرض الفنون API' });
 });
 
-// API endpoint to serve artwork images directly (supports base64 local fallback images for crawlers)
-app.get('/api/artwork-image/:id', async (req, res) => {
-  const artId = req.params.id;
+// API endpoint to serve artwork images directly (supports base64, external links, and .jpg extension for crawlers)
+app.get(['/api/artwork-image/:id', '/api/artwork-image/:id.jpg'], async (req, res) => {
+  const rawId = req.params.id || '';
+  const artId = rawId.replace(/\.jpg$/i, '');
   try {
     if (artId) {
       const artDoc = await getDoc(doc(db, 'artworks', artId));
@@ -78,6 +79,8 @@ app.get('/api/artwork-image/:id', async (req, res) => {
         const artData = artDoc.data();
         if (artData && artData.imageUrl) {
           const url = artData.imageUrl;
+
+          // 1. Base64 encoded image
           if (url.startsWith('data:image/')) {
             const matches = url.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
             if (matches) {
@@ -88,16 +91,37 @@ app.get('/api/artwork-image/:id', async (req, res) => {
               res.setHeader('Content-Length', buffer.length);
               return res.send(buffer);
             }
-          } else {
-            return res.redirect(302, getSocialImageUrl(url));
           }
+
+          // 2. External HTTP/HTTPS Image URL -> Proxy fetch and stream as image/jpeg
+          const socialUrl = getSocialImageUrl(url);
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const imgRes = await fetch(socialUrl, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (imgRes.ok) {
+              const arrayBuffer = await imgRes.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+              res.setHeader('Content-Type', contentType.includes('image/') ? contentType : 'image/jpeg');
+              res.setHeader('Cache-Control', 'public, max-age=86400');
+              res.setHeader('Content-Length', buffer.length);
+              return res.send(buffer);
+            }
+          } catch (fetchErr) {
+            console.warn('Proxy image fetch failed, fallback to 302 redirect:', fetchErr);
+          }
+
+          return res.redirect(302, socialUrl);
         }
       }
     }
   } catch (e) {
     console.error('Error serving artwork image API:', e);
   }
-  return res.redirect(302, 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop');
+  return res.redirect(302, 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop&q=85&fm=jpg');
 });
 
 // Helper function to create Mail Transporter
@@ -264,10 +288,9 @@ async function startServer() {
     });
   }
 
-  // Dynamic Open Graph & Twitter Cards handler for artwork pages /art/:id
+  // Dynamic Open Graph & Twitter Cards handler for artwork pages /art/:id or ?artId=:id
   // MUST be registered BEFORE static / vite middleware so crawlers get SSR Open Graph tags
-  app.get('/art/:id', async (req, res, next) => {
-    const artId = req.params.id;
+  const renderArtworkOpenGraph = async (artId: string, req: express.Request, res: express.Response, next: express.NextFunction) => {
     try {
       let artworkData: any = null;
       if (artId) {
@@ -317,16 +340,13 @@ async function startServer() {
       }
       const fullUrl = `${protocol}://${host}${req.originalUrl}`;
 
-      let imageUrl = '';
-      if (artworkData.imageUrl && artworkData.imageUrl.startsWith('data:image/')) {
-        imageUrl = `${protocol}://${host}/api/artwork-image/${artId}`;
-      } else {
-        imageUrl = getSocialImageUrl(artworkData.imageUrl);
-      }
+      // Direct JPEG URL ending in .jpg for WhatsApp, iMessage, Facebook, Twitter, and Telegram crawlers
+      const imageUrl = `${protocol}://${host}/api/artwork-image/${artId}.jpg`;
 
-      // Clean existing head tags to prevent duplicates for Facebook/Twitter/WhatsApp crawlers
+      // Clean existing head tags thoroughly to prevent duplicates for Facebook/Twitter/WhatsApp crawlers
       templateHtml = templateHtml.replace(/<title>[\s\S]*?<\/title>/gi, '');
-      templateHtml = templateHtml.replace(/<meta\s+(?:name|property)="(?:og:|twitter:|description|title)[^"]*"\s+content="[^"]*"\s*\/?>/gi, '');
+      templateHtml = templateHtml.replace(/<meta\s+[^>]*?(?:name|property)=["'](?:og:[^"']+|twitter:[^"']+|description|title)["'][^>]*?\/?>/gi, '');
+      templateHtml = templateHtml.replace(/<link\s+[^>]*?rel=["'](?:canonical|image_src)["'][^>]*?\/?>/gi, '');
 
       const ogTags = `
     <!-- Dynamic Open Graph & Social Sharing Meta Tags -->
@@ -343,10 +363,10 @@ async function startServer() {
     <meta property="og:description" content="${description}" />
     <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:secure_url" content="${imageUrl}" />
+    <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="${rawTitle} - ${prefix} ${artist}" />
-    <meta property="og:image:type" content="image/jpeg" />
 
     <!-- Twitter / X Summary Large Image Card -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -365,14 +385,20 @@ async function startServer() {
 
       templateHtml = templateHtml.replace('</head>', `${ogTags}\n</head>`);
 
-      res.status(200).set({ 
+      return res.status(200).set({ 
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'public, max-age=300'
-      }).end(templateHtml);
+      }).send(templateHtml);
     } catch (err) {
       console.error('Error rendering Open Graph tags:', err);
-      next();
+      return next();
     }
+  };
+
+  app.get('/art/:id', async (req, res, next) => {
+    const rawId = req.params.id || '';
+    const artId = rawId.replace(/\.jpg$/i, '');
+    return renderArtworkOpenGraph(artId, req, res, next);
   });
 
   // Serve Vite / Static files AFTER SSR routes
@@ -384,8 +410,13 @@ async function startServer() {
   }
 
   // Universal Fallback for SPA routing (prevents 404 on direct link navigation or refreshing)
-  app.get('*', async (req, res) => {
+  app.get('*', async (req, res, next) => {
     try {
+      const artQuery = (req.query.artId || req.query.art || '') as string;
+      if (artQuery) {
+        return renderArtworkOpenGraph(artQuery, req, res, next);
+      }
+
       if (isProd) {
         const distIndexPath = path.join(process.cwd(), 'dist', 'index.html');
         if (fs.existsSync(distIndexPath)) {

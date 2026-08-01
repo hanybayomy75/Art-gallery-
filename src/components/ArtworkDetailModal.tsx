@@ -140,10 +140,16 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
       meta.setAttribute('content', content);
     };
 
-    const shareImg = getSocialShareImageUrl(artwork.imageUrl);
+    const directImg = `${window.location.origin}/api/artwork-image/${artwork.id}.jpg`;
+    const fallbackImg = getSocialShareImageUrl(artwork.imageUrl);
+    const shareImg = (artwork.id && !artwork.id.startsWith('wm-') && !artwork.id.startsWith('sample-')) ? directImg : fallbackImg;
+
     setMeta('og:title', `${artwork.title} - ${artistPrefix} ${artwork.artistName || 'فنان المعرض'}`);
     setMeta('og:image', shareImg);
     setMeta('og:image:secure_url', shareImg);
+    setMeta('og:image:type', 'image/jpeg');
+    setMeta('og:image:width', '1200');
+    setMeta('og:image:height', '630');
     setMeta('og:url', `${window.location.origin}/art/${artwork.id}`);
     setMeta('twitter:title', `${artwork.title} - ${artistPrefix} ${artwork.artistName || 'فنان المعرض'}`, true);
     setMeta('twitter:image', shareImg, true);
@@ -284,21 +290,8 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
     const senderName = userProfile?.artistName || userProfile?.displayName || 'زائر المعرض';
 
-    // Notification for artwork owner if different
+    // Send offline email summary to artist if enabled
     if (artwork.userId && artwork.userId !== user?.uid) {
-      addAppNotification({
-        recipientUserId: artwork.userId,
-        actorUserId: user?.uid,
-        actorName: senderName,
-        type: 'rating',
-        title: 'تقييم جديد لعملك الفني! 🌟',
-        message: `قام ${senderName} بتقييم عملك الفني "${artwork.title}" بـ ${stars} نجوم.`,
-        artId: artwork.id,
-        artTitle: artwork.title,
-        artImageUrl: artwork.imageUrl
-      });
-
-      // Send offline email summary to artist
       const targetSettings = getArtistEmailSettings(artwork.userId);
       const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
       if (targetSettings.enabled && targetSettings.notifyRatings && targetEmail) {
@@ -403,22 +396,8 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
         const senderName = userProfile.artistName || userProfile.displayName || 'فنان معارض';
         const trimmedComment = textToComment.trim();
 
-        // Notification for artwork owner
+        // Send offline email summary to artist if enabled
         if (artwork.userId && artwork.userId !== user.uid) {
-          addAppNotification({
-            recipientUserId: artwork.userId,
-            actorUserId: user.uid,
-            actorName: senderName,
-            actorPhotoURL: userProfile.photoURL || '',
-            type: 'comment',
-            title: 'تعليق جديد على عملك الفني! 💬',
-            message: `قام ${senderName} بالتعليق على عملك الفني "${artwork.title}": "${trimmedComment.slice(0, 50)}"`,
-            artId: artwork.id,
-            artTitle: artwork.title,
-            artImageUrl: artwork.imageUrl
-          });
-
-          // Send offline email summary to artist
           const targetSettings = getArtistEmailSettings(artwork.userId);
           const targetEmail = artwork.artistEmail || targetSettings.artistEmail || 'artist@arabartgallery.com';
           if (targetSettings.enabled && targetSettings.notifyComments && targetEmail) {

@@ -12,7 +12,7 @@ import { Footer } from './components/Footer';
 import { MyProfilePage } from './pages/MyProfilePage';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { Artwork } from './types';
-import { fetchArtworkById, subscribeToApprovedArtworks, DEFAULT_CATEGORIES } from './lib/artworks';
+import { fetchArtworkById, fetchApprovedArtworks, subscribeToApprovedArtworks, DEFAULT_CATEGORIES } from './lib/artworks';
 
 
 function MainApp() {
@@ -80,10 +80,41 @@ function MainApp() {
     window.history.pushState({}, '', '/');
   };
 
-  const handleSelectArtworkById = (artId: string) => {
+  const handleSelectArtworkById = (artId: string, fallbackNotif?: any) => {
+    if (!artId && !fallbackNotif) return;
+
     fetchArtworkById(artId).then((art) => {
       if (art) {
         handleSelectArtwork(art);
+      } else {
+        // Secondary fallback search through approved artworks
+        fetchApprovedArtworks('الكل').then((allArtworks) => {
+          const matched = allArtworks.find(
+            (a) => a.id === artId || (fallbackNotif?.artTitle && a.title === fallbackNotif.artTitle)
+          );
+
+          if (matched) {
+            handleSelectArtwork(matched);
+          } else if (fallbackNotif) {
+            // Guaranteed fallback artwork object to open detail modal seamlessly
+            const fallbackArt: Artwork = {
+              id: artId || `art_${Date.now()}`,
+              title: fallbackNotif.artTitle || fallbackNotif.title || 'عمل فني',
+              imageUrl: fallbackNotif.artImageUrl || '',
+              artistName: fallbackNotif.actorName || fallbackNotif.senderName || 'فنان المعرض',
+              userName: fallbackNotif.actorName || fallbackNotif.senderName || 'فنان المعرض',
+              userId: fallbackNotif.actorId || 'unknown',
+              description: fallbackNotif.message || '',
+              category: 'لوحات فنية',
+              tags: [],
+              status: 'approved',
+              likesCount: 0,
+              commentsCount: 0,
+              createdAt: fallbackNotif.createdAt || new Date().toISOString()
+            };
+            handleSelectArtwork(fallbackArt);
+          }
+        });
       }
     });
   };
@@ -148,7 +179,7 @@ function MainApp() {
       <UploadModal onSuccess={() => setActiveView('profile')} />
       <AuthModal />
       <ThemeSettingsModal />
-      <NotificationToastContainer />
+      <NotificationToastContainer onSelectArtwork={handleSelectArtworkById} />
 
 
     </div>

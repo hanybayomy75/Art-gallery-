@@ -29,7 +29,7 @@ interface NavbarProps {
   setActiveView: (view: 'home' | 'profile' | 'admin') => void;
   onSelectCategory?: (category: string) => void;
   selectedCategory?: string;
-  onSelectArtwork?: (artId: string) => void;
+  onSelectArtwork?: (artId: string, fallbackNotif?: any) => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView, onSelectCategory, selectedCategory, onSelectArtwork }) => {

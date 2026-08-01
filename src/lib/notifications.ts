@@ -33,13 +33,49 @@ export function triggerToast(toast: Omit<ToastMessage, 'id'>) {
   }
 }
 
+export function deduplicateNotifications(list: AppNotification[]): AppNotification[] {
+  if (!Array.isArray(list)) return [];
+  const seenIds = new Set<string>();
+  const seenKeys = new Set<string>();
+  const result: AppNotification[] = [];
+
+  for (const item of list) {
+    if (!item) continue;
+    const itemId = item.id || `temp_${Math.random()}`;
+
+    // Direct ID deduplication
+    if (seenIds.has(itemId)) continue;
+
+    // Content fingerprint deduplication (within ~15 sec window)
+    const recId = item.recipientUserId || item.userId || '';
+    const actId = item.actorUserId || '';
+    const notifType = item.type || '';
+    const artId = item.artId || '';
+    const title = item.title || '';
+    const timeWindow = Math.floor(new Date(item.createdAt || Date.now()).getTime() / 15000);
+    const contentKey = `${recId}_${actId}_${notifType}_${artId}_${title}_${timeWindow}`;
+
+    if (seenKeys.has(contentKey)) {
+      continue;
+    }
+
+    seenIds.add(itemId);
+    seenKeys.add(contentKey);
+    result.push(item);
+  }
+
+  return result;
+}
+
 export function getLocalNotifications(): AppNotification[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return deduplicateNotifications(parsed);
+      }
     }
   } catch (e) {
     // ignore
@@ -50,7 +86,8 @@ export function getLocalNotifications(): AppNotification[] {
 export function saveLocalNotifications(list: AppNotification[]) {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(list.slice(0, 50)));
+    const cleanList = deduplicateNotifications(list);
+    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(cleanList.slice(0, 50)));
     notifyChange();
   } catch (e) {
     // ignore
@@ -60,7 +97,9 @@ export function saveLocalNotifications(list: AppNotification[]) {
 export async function fetchUserNotificationsFromFirestore(userId: string): Promise<AppNotification[]> {
   if (!userId || userId === 'guest') {
     const local = getLocalNotifications();
-    return local.filter((n) => (n.recipientUserId || n.userId) === 'guest' || (n.recipientUserId || n.userId) === 'all');
+    return deduplicateNotifications(
+      local.filter((n) => (n.recipientUserId || n.userId) === 'guest' || (n.recipientUserId || n.userId) === 'all')
+    );
   }
 
   const notifMap = new Map<string, AppNotification>();
@@ -133,16 +172,20 @@ export async function fetchUserNotificationsFromFirestore(userId: string): Promi
     console.warn('Notice: Firestore notifications fetch fallback to local:', e);
   }
 
-  const list = Array.from(notifMap.values());
-  return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const rawList = Array.from(notifMap.values());
+  const deduplicated = deduplicateNotifications(rawList);
+  return deduplicated.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export function getUserNotifications(userId?: string): AppNotification[] {
   const all = getLocalNotifications();
+  let filtered: AppNotification[];
   if (!userId) {
-    return all.filter((n) => (n.recipientUserId || n.userId) === 'guest' || (n.recipientUserId || n.userId) === 'all');
+    filtered = all.filter((n) => (n.recipientUserId || n.userId) === 'guest' || (n.recipientUserId || n.userId) === 'all');
+  } else {
+    filtered = all.filter((n) => (n.recipientUserId || n.userId) === userId || (n.recipientUserId || n.userId) === 'all');
   }
-  return all.filter((n) => (n.recipientUserId || n.userId) === userId || (n.recipientUserId || n.userId) === 'all');
+  return deduplicateNotifications(filtered);
 }
 
 export interface AddNotificationParams {
@@ -174,8 +217,25 @@ export async function addAppNotification(
     return null;
   }
 
+  // Deduplication check locally before creating:
+  const current = getLocalNotifications();
+  const isDuplicateLocal = current.some((n) => {
+    const isSameRecipient = (n.recipientUserId || n.userId) === recipientId;
+    const isSameActor = n.actorUserId === actorId;
+    const isSameType = n.type === data.type;
+    const isSameArt = (n.artId || '') === (data.artId || '');
+    const isSameTitle = n.title === data.title;
+    const timeDiff = Math.abs(new Date().getTime() - new Date(n.createdAt).getTime());
+    return isSameRecipient && isSameActor && isSameType && isSameArt && isSameTitle && timeDiff < 10000;
+  });
+
+  if (isDuplicateLocal) {
+    return null;
+  }
+
+  const tempId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const newNotif: AppNotification = {
-    id: `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    id: tempId,
     recipientUserId: recipientId,
     actorUserId: actorId || '',
     actorName: data.actorName || '',
@@ -194,8 +254,7 @@ export async function addAppNotification(
   };
 
   // 1. Save locally for recipient if on same client
-  const current = getLocalNotifications();
-  const updated = [newNotif, ...current];
+  const updated = deduplicateNotifications([newNotif, ...current]);
   saveLocalNotifications(updated);
 
   // 2. Save to Firestore for recipient
@@ -216,6 +275,11 @@ export async function addAppNotification(
       read: false,
       createdAt: newNotif.createdAt
     });
+    
+    // Replace tempId with docRef.id in local storage to prevent duplicate entries from local + Firestore listener
+    const latestLocal = getLocalNotifications();
+    const syncedLocal = latestLocal.map((item) => (item.id === tempId ? { ...item, id: docRef.id } : item));
+    saveLocalNotifications(deduplicateNotifications(syncedLocal));
     newNotif.id = docRef.id;
   } catch (e) {
     console.warn('Notice: Notification saved locally (client offline or firestore rules):', e);

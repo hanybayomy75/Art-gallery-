@@ -233,8 +233,8 @@ export function getSocialShareImageUrl(urlOrPublicId: string): string {
   const uploadIndex = urlOrPublicId.indexOf('/upload/');
   if (uploadIndex === -1) return urlOrPublicId;
 
-  // Transform: 1200x630, auto format, quality auto, c_pad, b_auto:predominant or blur
-  const transformString = 'f_auto,q_auto,w_1200,h_630,c_pad,b_auto:predominant';
+  // Transform: 1200x630, forced JPG format for WhatsApp/Facebook/X crawlers, quality auto, c_pad, b_auto:predominant
+  const transformString = 'f_jpg,q_auto,w_1200,h_630,c_pad,b_auto:predominant';
 
   return urlOrPublicId.slice(0, uploadIndex + 8) + transformString + '/' + urlOrPublicId.slice(uploadIndex + 8);
 }

@@ -8,7 +8,6 @@ export const AuthModal: React.FC = () => {
     setIsAuthModalOpen, 
     authActionPrompt,
     signInWithGoogle,
-    signInWithFacebook,
     loginWithEmail,
     registerWithEmail
   } = useAuth();
@@ -101,27 +100,6 @@ export const AuthModal: React.FC = () => {
     }
   };
 
-  const handleFacebookAuth = async () => {
-    setError(null);
-    setLoading(true);
-    try {
-      await signInWithFacebook();
-    } catch (err: any) {
-      console.error('Facebook auth error detail:', err);
-      if (err.code === 'auth/unauthorized-domain' || err.message?.includes('unauthorized-domain')) {
-        setError(`خطأ النطاق غير المصرح به (auth/unauthorized-domain): النطاق الحالي (${window.location.hostname}) يحتاج للإضافة في قائمة Authorized Domains بـ Firebase Console. يمكنك نسخته أدناه، أو تسجيل الدخول بالبريد الإلكتروني مباشرة.`);
-      } else if (err.code === 'auth/popup-blocked') {
-        setError('تم حظر النافذة المنبثقة من قِبل المتصفح. يرجى السماح بالنوافذ المنبثقة ثم المحاولة مجددًا.');
-      } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-        setError('تم إغلاق نافذة تسجيل الدخول قبل إكمال العملية.');
-      } else {
-        setError(err.message || 'فشل تسجيل الدخول بواسطة Facebook. تأكد من تفعيل مزود Facebook في إعدادات Firebase.');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
       <div className="relative w-full max-w-md bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] p-5 sm:p-8 text-right my-auto max-h-[90vh] overflow-y-auto custom-scrollbar">
@@ -194,7 +172,7 @@ export const AuthModal: React.FC = () => {
           <button
             onClick={handleGoogleAuth}
             disabled={loading}
-            className="w-full py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm font-semibold flex items-center justify-center gap-3 transition-all shadow-sm"
+            className="w-full py-3 px-4 rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm font-semibold flex items-center justify-center gap-3 transition-all shadow-sm hover:border-slate-300 dark:hover:border-slate-600"
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -203,17 +181,6 @@ export const AuthModal: React.FC = () => {
               <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
             </svg>
             متابعة باستخدام Google
-          </button>
-
-          <button
-            onClick={handleFacebookAuth}
-            disabled={loading}
-            className="w-full py-3 px-4 rounded-2xl bg-[#1877F2] hover:bg-[#166fe5] text-white text-sm font-semibold flex items-center justify-center gap-3 transition-all shadow-sm"
-          >
-            <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-              <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-            </svg>
-            متابعة باستخدام Facebook
           </button>
         </div>
 

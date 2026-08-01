@@ -9,13 +9,14 @@ import {
   markAllNotificationsAsRead, 
   clearUserNotifications, 
   getLocalNotifications,
+  deduplicateNotifications,
   NOTIFICATION_EVENT 
 } from '../lib/notifications';
 import { AppNotification } from '../types';
 import { Bell, Heart, MessageSquare, Star, Sparkles, Check, Trash2, X } from 'lucide-react';
 
 interface NotificationCenterProps {
-  onSelectArtwork?: (artId: string) => void;
+  onSelectArtwork?: (artId: string, notif?: AppNotification) => void;
 }
 
 export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onSelectArtwork }) => {
@@ -84,7 +85,9 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onSelect
               }
             });
 
-            const list = Array.from(notifMap.values()).sort(
+            const rawList = Array.from(notifMap.values());
+            const deduplicated = deduplicateNotifications(rawList);
+            const list = deduplicated.sort(
               (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
             );
             setNotifications(list);
@@ -139,8 +142,8 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ onSelect
       markNotificationAsRead(notif.id);
       loadNotifs();
     }
-    if (notif.artId && onSelectArtwork) {
-      onSelectArtwork(notif.artId);
+    if (onSelectArtwork && (notif.artId || notif.artTitle)) {
+      onSelectArtwork(notif.artId || '', notif);
       setIsOpen(false);
     }
   };

@@ -2,7 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { TOAST_EVENT, ToastMessage } from '../lib/notifications';
 import { Heart, MessageSquare, Star, Sparkles, X } from 'lucide-react';
 
-export const NotificationToastContainer: React.FC = () => {
+interface NotificationToastContainerProps {
+  onSelectArtwork?: (artId: string, fallbackNotif?: any) => void;
+}
+
+export const NotificationToastContainer: React.FC<NotificationToastContainerProps> = ({ onSelectArtwork }) => {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   useEffect(() => {
@@ -55,7 +59,15 @@ export const NotificationToastContainer: React.FC = () => {
         return (
           <div
             key={toast.id}
-            className={`pointer-events-auto p-4 rounded-2xl bg-[var(--bg-card)]/95 backdrop-blur-xl border ${borderColor} bg-gradient-to-r ${bgGradient} shadow-2xl shadow-black/10 transition-all duration-300 animate-in slide-in-from-bottom-5 fade-in flex items-start gap-3 text-slate-900 dark:text-white`}
+            onClick={() => {
+              if (toast.artId && onSelectArtwork) {
+                onSelectArtwork(toast.artId, toast);
+                removeToast(toast.id);
+              }
+            }}
+            className={`pointer-events-auto p-4 rounded-2xl bg-[var(--bg-card)]/95 backdrop-blur-xl border ${borderColor} bg-gradient-to-r ${bgGradient} shadow-2xl shadow-black/10 transition-all duration-300 animate-in slide-in-from-bottom-5 fade-in flex items-start gap-3 text-slate-900 dark:text-white ${
+              toast.artId ? 'cursor-pointer hover:scale-[1.02]' : ''
+            }`}
           >
             <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-800/80 shadow-sm shrink-0">
               {icon}

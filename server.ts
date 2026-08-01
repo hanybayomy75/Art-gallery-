@@ -28,10 +28,11 @@ const db = getFirestore(fbApp, databaseId);
 // Helper to generate social share Cloudinary or Unsplash URL (1200x630 JPEG format)
 function getSocialImageUrl(url: string): string {
   if (!url) return 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop&q=85&fm=jpg';
+  if (url.startsWith('data:image/')) return '';
   if (url.includes('cloudinary.com')) {
     const uploadIndex = url.indexOf('/upload/');
     if (uploadIndex !== -1) {
-      return url.slice(0, uploadIndex + 8) + 'f_jpg,q_auto,w_1200,h_630,c_pad,b_auto:predominant/' + url.slice(uploadIndex + 8);
+      return url.slice(0, uploadIndex + 8) + 'f_jpg,q_auto,w_1200,h_630,c_fill/' + url.slice(uploadIndex + 8);
     }
   }
   if (url.includes('images.unsplash.com')) {
@@ -79,40 +80,21 @@ app.get(['/api/artwork-image/:id', '/api/artwork-image/:id.jpg'], async (req, re
         if (artData && artData.imageUrl) {
           const url = artData.imageUrl;
 
-          // 1. Base64 encoded image
+          // 1. Base64 encoded image -> stream decoded buffer directly
           if (url.startsWith('data:image/')) {
             const matches = url.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
             if (matches) {
               const mimeType = matches[1];
               const buffer = Buffer.from(matches[2], 'base64');
-              res.setHeader('Content-Type', mimeType);
+              res.setHeader('Content-Type', mimeType.includes('png') ? 'image/png' : 'image/jpeg');
               res.setHeader('Cache-Control', 'public, max-age=86400');
               res.setHeader('Content-Length', buffer.length);
               return res.send(buffer);
             }
           }
 
-          // 2. External HTTP/HTTPS Image URL -> Proxy fetch and stream as image/jpeg
+          // 2. Direct HTTP/HTTPS Image URL -> 302 redirect directly to CDN image
           const socialUrl = getSocialImageUrl(url);
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4000);
-            const imgRes = await fetch(socialUrl, { signal: controller.signal });
-            clearTimeout(timeoutId);
-
-            if (imgRes.ok) {
-              const arrayBuffer = await imgRes.arrayBuffer();
-              const buffer = Buffer.from(arrayBuffer);
-              const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
-              res.setHeader('Content-Type', contentType.includes('image/') ? contentType : 'image/jpeg');
-              res.setHeader('Cache-Control', 'public, max-age=86400');
-              res.setHeader('Content-Length', buffer.length);
-              return res.send(buffer);
-            }
-          } catch (fetchErr) {
-            console.warn('Proxy image fetch failed, fallback to 302 redirect:', fetchErr);
-          }
-
           return res.redirect(302, socialUrl);
         }
       }
@@ -188,8 +170,27 @@ async function startServer() {
       }
       const fullUrl = `${protocol}://${host}${req.originalUrl}`;
 
-      // Direct JPEG URL ending in .jpg for WhatsApp, iMessage, Facebook, Twitter, and Telegram crawlers
-      const imageUrl = `${protocol}://${host}/api/artwork-image/${artId}.jpg`;
+      // Determine absolute social thumbnail image URL
+      let imageUrl = '';
+      if (artworkData && artworkData.imageUrl) {
+        if (artworkData.imageUrl.startsWith('http://') || artworkData.imageUrl.startsWith('https://')) {
+          // Direct public CDN image URL (Cloudinary / Unsplash) for 100% compatibility with WhatsApp, Facebook, X, etc.
+          imageUrl = getSocialImageUrl(artworkData.imageUrl);
+        } else if (artworkData.imageUrl.startsWith('data:image/')) {
+          // Base64 image served via dedicated endpoint
+          imageUrl = `${protocol}://${host}/api/artwork-image/${artId}.jpg`;
+        } else {
+          imageUrl = artworkData.imageUrl;
+        }
+      }
+      if (!imageUrl) {
+        imageUrl = 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop&q=85&fm=jpg';
+      }
+
+      // Ensure HTTPS protocol for external links if secure
+      if (imageUrl.startsWith('http://') && !imageUrl.includes('localhost')) {
+        imageUrl = imageUrl.replace('http://', 'https://');
+      }
 
       // Clean existing head tags thoroughly to prevent duplicates for Facebook/Twitter/WhatsApp crawlers
       templateHtml = templateHtml.replace(/<title>[\s\S]*?<\/title>/gi, '');
@@ -205,11 +206,12 @@ async function startServer() {
 
     <!-- Open Graph / Facebook / WhatsApp / LinkedIn / Telegram -->
     <meta property="og:type" content="article" />
-    <meta property="og:site_name" content="معرض الفنون" />
+    <meta property="og:site_name" content="معرض الفنون العربية" />
     <meta property="og:url" content="${fullUrl}" />
     <meta property="og:title" content="${rawTitle} - ${prefix} ${artist}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:image:url" content="${imageUrl}" />
     <meta property="og:image:secure_url" content="${imageUrl}" />
     <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1200" />
@@ -229,6 +231,22 @@ async function startServer() {
 
     <!-- Messaging Apps Preview Fallback (WhatsApp / iMessage) -->
     <link rel="image_src" href="${imageUrl}" />
+
+    <!-- Schema.org JSON-LD Structured Data for Crawlers -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "VisualArtwork",
+      "name": "${rawTitle}",
+      "description": "${description}",
+      "image": "${imageUrl}",
+      "url": "${fullUrl}",
+      "creator": {
+        "@type": "Person",
+        "name": "${artist}"
+      }
+    }
+    </script>
 `;
 
       templateHtml = templateHtml.replace('</head>', `${ogTags}\n</head>`);

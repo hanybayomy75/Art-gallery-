@@ -234,12 +234,15 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
       meta.setAttribute('content', content);
     };
 
-    const directImg = `${window.location.origin}/api/artwork-image/${artwork.id}.jpg`;
-    const fallbackImg = getSocialShareImageUrl(artwork.imageUrl);
-    const shareImg = (artwork.id && !artwork.id.startsWith('wm-') && !artwork.id.startsWith('sample-')) ? directImg : fallbackImg;
+    const directCdnImg = (artwork.imageUrl && (artwork.imageUrl.startsWith('http://') || artwork.imageUrl.startsWith('https://')))
+      ? getSocialShareImageUrl(artwork.imageUrl)
+      : null;
+    const proxyImg = `${window.location.origin}/api/artwork-image/${artwork.id}.jpg`;
+    const shareImg = directCdnImg || proxyImg;
 
     setMeta('og:title', `${artwork.title} - ${artistPrefix} ${artwork.artistName || 'فنان المعرض'}`);
     setMeta('og:image', shareImg);
+    setMeta('og:image:url', shareImg);
     setMeta('og:image:secure_url', shareImg);
     setMeta('og:image:type', 'image/jpeg');
     setMeta('og:image:width', '1200');
@@ -247,6 +250,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
     setMeta('og:url', `${window.location.origin}/art/${artwork.id}`);
     setMeta('twitter:title', `${artwork.title} - ${artistPrefix} ${artwork.artistName || 'فنان المعرض'}`, true);
     setMeta('twitter:image', shareImg, true);
+    setMeta('twitter:image:src', shareImg, true);
 
     // Check user favorite status
     const updateFavStatus = () => {

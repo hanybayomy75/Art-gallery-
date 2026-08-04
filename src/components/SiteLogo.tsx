@@ -101,7 +101,7 @@ export const SiteLogo: React.FC<SiteLogoProps> = ({ className = '', size = 'md',
             معرض الفنون
           </h1>
           <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold tracking-wide">
-            المنصة العربية الفنية الأولى
+            منصة الفنانين والمصورين العرب
           </p>
         </div>
       )}

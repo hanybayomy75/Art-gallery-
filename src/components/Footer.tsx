@@ -16,7 +16,7 @@ export const Footer: React.FC = () => {
         </div>
 
         <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-          المنصة العربية الفنية الأولى لنشر وتوثيق أروع اللوحات، الرسم الرقمي، الصور الفوتوغرافية، والفنون التشكيلية المعاصرة.
+          منصة الفنانين والمصورين العرب لنشر وتوثيق أروع اللوحات، الرسم الرقمي، الصور الفوتوغرافية، والفنون التشكيلية المعاصرة.
         </p>
 
         <div className="flex items-center justify-center gap-3">

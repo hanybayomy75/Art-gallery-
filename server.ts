@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import firebaseConfigData from './firebase-applet-config.json';
 
 const app = express();
@@ -66,6 +66,81 @@ function getArtistPrefix(category?: string): string {
 // Health check route
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', name: 'معرض الفنون API' });
+});
+
+// Serve Google Search Console verification file
+app.get('/google59bc9d2a341975c0.html', (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.send('google-site-verification: google59bc9d2a341975c0.html');
+});
+
+// Serve robots.txt dynamically with absolute sitemap URL
+app.get('/robots.txt', (req, res) => {
+  const xProto = req.get('x-forwarded-proto');
+  const xHost = req.get('x-forwarded-host');
+  const protocol = xProto ? xProto.split(',')[0] : req.protocol;
+  const host = xHost || req.get('host') || 'localhost:3000';
+  const baseUrl = `${protocol}://${host}`;
+
+  const robots = `User-agent: *
+Allow: /
+Allow: /art/
+Allow: /api/artwork-image/
+Disallow: /admin
+
+Sitemap: ${baseUrl}/sitemap.xml
+`;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(robots.trim());
+});
+
+// Serve sitemap.xml dynamically with all approved artwork pages
+app.get('/sitemap.xml', async (req, res) => {
+  const xProto = req.get('x-forwarded-proto');
+  const xHost = req.get('x-forwarded-host');
+  const protocol = xProto ? xProto.split(',')[0] : req.protocol;
+  const host = xHost || req.get('host') || 'localhost:3000';
+  const baseUrl = `${protocol}://${host}`;
+
+  const urls: string[] = [
+    `  <url>
+    <loc>${baseUrl}/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>`
+  ];
+
+  try {
+    const qApproved = query(collection(db, 'artworks'), where('status', '==', 'approved'));
+    const snap = await getDocs(qApproved);
+    snap.forEach((docSnap) => {
+      const art = docSnap.data();
+      const artId = docSnap.id;
+      const updatedAt = art.updatedAt?.toDate?.() || art.createdAt?.toDate?.() || new Date();
+      const lastMod = updatedAt.toISOString().split('T')[0];
+
+      urls.push(`  <url>
+    <loc>${baseUrl}/art/${artId}</loc>
+    <lastmod>${lastMod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`);
+    });
+  } catch (e) {
+    console.error('Error generating dynamic sitemap.xml:', e);
+  }
+
+  const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+${urls.join('\n')}
+</urlset>`;
+
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(sitemapXml.trim());
 });
 
 // API endpoint to serve artwork images directly (supports base64, external links, and .jpg extension for crawlers)
@@ -134,7 +209,7 @@ async function startServer() {
         artworkData = {
           title: 'عمل فني مميز',
           artistName: 'فنان المعرض',
-          description: 'استكشف هذه اللوحة الفنية الرائعة والعديد من الأعمال الفنية في منصة معرض الفنون العربية.',
+          description: 'استكشف هذه اللوحة الفنية الرائعة والعديد من الأعمال الفنية في منصة الفنانين والمصورين العرب.',
           imageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop'
         };
       }
@@ -159,7 +234,7 @@ async function startServer() {
       const pageTitle = `${rawTitle} - ${prefix} ${artist} | معرض الفنون`;
       const description = artworkData.description
         ? (artworkData.description.length > 160 ? artworkData.description.slice(0, 157) + '...' : artworkData.description)
-        : `استكشف اللوحة الفنية "${rawTitle}" ${prefix} ${artist} في منصة معرض الفنون العربية.`;
+        : `استكشف اللوحة الفنية "${rawTitle}" ${prefix} ${artist} في منصة الفنانين والمصورين العرب.`;
       
       const xProto = req.get('x-forwarded-proto');
       const xHost = req.get('x-forwarded-host');

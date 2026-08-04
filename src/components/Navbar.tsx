@@ -26,8 +26,8 @@ import {
 
 interface NavbarProps {
   onOpenSearch?: () => void;
-  activeView: 'home' | 'profile' | 'admin';
-  setActiveView: (view: 'home' | 'profile' | 'admin') => void;
+  activeView: 'home' | 'artworks' | 'artwork_detail' | 'profile' | 'admin';
+  setActiveView: (view: 'home' | 'artworks' | 'artwork_detail' | 'profile' | 'admin') => void;
   onSelectCategory?: (category: string) => void;
   selectedCategory?: string;
   onSelectArtwork?: (artId: string, fallbackNotif?: any) => void;
@@ -90,6 +90,7 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView, onSel
                 onClick={() => {
                   setActiveView('home');
                   onSelectCategory?.('الكل');
+                  window.history.pushState({}, '', '/');
                 }}
                 className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
                   activeView === 'home'
@@ -98,7 +99,22 @@ export const Navbar: React.FC<NavbarProps> = ({ activeView, setActiveView, onSel
                 }`}
               >
                 <Home className="w-4 h-4" />
-                الرئيسية والجاليري
+                الرئيسية
+              </button>
+
+              <button
+                onClick={() => {
+                  setActiveView('artworks');
+                  window.history.pushState({}, '', '/artworks');
+                }}
+                className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center gap-2 ${
+                  activeView === 'artworks'
+                    ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <Sparkles className="w-4 h-4 text-[var(--color-primary)]" />
+                الأعمال المقبولة
               </button>
 
               {user && (

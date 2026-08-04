@@ -1,6 +1,6 @@
 {
   "name": "معرض الفنون",
-  "description": "منصة عربية متكاملة لعرض ونشر الأعمال الفنية واللوحات والرسومات والصور الفوتوغرافية",
+  "description": "منصة الفنانين والمصورين العرب - لعرض ونشر الأعمال الفنية واللوحات والرسومات والصور الفوتوغرافية",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

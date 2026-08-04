@@ -89,7 +89,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({ onExploreClick, onSele
           <div className="lg:col-span-7 text-right space-y-6">
             <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20 text-xs font-bold">
               <Sparkles className="w-3.5 h-3.5 animate-spin-slow" />
-              <span>المنصة الفنية المتكاملة للمبدعين العرب</span>
+              <span>منصة الفنانين والمصورين العرب</span>
             </div>
 
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold font-serif text-slate-900 dark:text-white leading-[1.25] tracking-tight">

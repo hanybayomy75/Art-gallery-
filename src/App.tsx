@@ -11,13 +11,17 @@ import { NotificationToastContainer } from './components/NotificationToastContai
 import { Footer } from './components/Footer';
 import { MyProfilePage } from './pages/MyProfilePage';
 import { AdminDashboard } from './pages/AdminDashboard';
+import { PublicArtworkPage } from './pages/PublicArtworkPage';
+import { PublicGalleryPage } from './pages/PublicGalleryPage';
 import { Artwork } from './types';
 import { fetchArtworkById, fetchApprovedArtworks, subscribeToApprovedArtworks, DEFAULT_CATEGORIES } from './lib/artworks';
 
+type ActiveView = 'home' | 'artworks' | 'artwork_detail' | 'profile' | 'admin';
 
 function MainApp() {
-  const [activeView, setActiveView] = useState<'home' | 'profile' | 'admin'>('home');
+  const [activeView, setActiveView] = useState<ActiveView>('home');
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null);
+  const [publicArtworkId, setPublicArtworkId] = useState<string>('');
   const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
 
   // Dynamic Hero Stats
@@ -29,30 +33,53 @@ function MainApp() {
 
   const handleSelectCategory = (cat: string) => {
     setSelectedCategory(cat);
-    if (activeView !== 'home') {
-      setActiveView('home');
+    if (activeView !== 'home' && activeView !== 'artworks') {
+      setActiveView('artworks');
+      window.history.pushState({}, '', '/artworks');
+    } else if (activeView === 'home') {
+      setTimeout(() => {
+        const galleryEl = document.getElementById('gallery-section');
+        if (galleryEl) {
+          galleryEl.scrollIntoView({ behavior: 'smooth' });
+        }
+      }, 100);
     }
-    setTimeout(() => {
-      const galleryEl = document.getElementById('gallery-section');
-      if (galleryEl) {
-        galleryEl.scrollIntoView({ behavior: 'smooth' });
-      }
-    }, 100);
   };
 
-  // Handle direct URL navigation to /art/:id & subscribe to realtime stats
+  // Sync URL routes & handle browser Back/Forward (popstate)
   useEffect(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/art/')) {
-      const artId = path.split('/art/')[1];
-      if (artId) {
-        fetchArtworkById(artId).then((art) => {
-          if (art) {
-            setSelectedArtwork(art);
-          }
-        });
+    const syncRouteFromLocation = () => {
+      const path = window.location.pathname;
+
+      if (path.startsWith('/art/') || path.startsWith('/artwork/')) {
+        const id = path.replace(/^\/(art|artwork)\//, '');
+        if (id) {
+          setPublicArtworkId(id);
+          setActiveView('artwork_detail');
+          fetchArtworkById(id).then((art) => {
+            if (art) setSelectedArtwork(art);
+          });
+        }
+      } else if (path === '/artworks' || path === '/gallery') {
+        setActiveView('artworks');
+        setSelectedArtwork(null);
+      } else if (path === '/profile') {
+        setActiveView('profile');
+        setSelectedArtwork(null);
+      } else if (path === '/admin') {
+        setActiveView('admin');
+        setSelectedArtwork(null);
+      } else {
+        setActiveView('home');
+        setSelectedArtwork(null);
       }
-    }
+    };
+
+    // Initial check on page load
+    syncRouteFromLocation();
+
+    // Browser back / forward button handling
+    window.addEventListener('popstate', syncRouteFromLocation);
 
     // Subscribe to overall hero metrics dynamically from approved artworks
     const unsubscribe = subscribeToApprovedArtworks((list) => {
@@ -64,20 +91,23 @@ function MainApp() {
       });
     }, 'الكل', '', 'newest', 500);
 
-    return () => unsubscribe();
+    return () => {
+      window.removeEventListener('popstate', syncRouteFromLocation);
+      unsubscribe();
+    };
   }, []);
 
   const handleSelectArtwork = (art: Artwork) => {
     setSelectedArtwork(art);
+    setPublicArtworkId(art.id);
+    setActiveView('artwork_detail');
     // Update document title and browser URL without full reload
-    document.title = `${art.title} - بريشة الفنان ${art.artistName} | معرض الفنون`;
+    document.title = `${art.title} - بريشة الفنان ${art.artistName || art.userName} | معرض الفنون`;
     window.history.pushState({}, '', `/art/${art.id}`);
   };
 
   const handleCloseDetailModal = () => {
     setSelectedArtwork(null);
-    document.title = 'معرض الفنون - منصة اللوحات والأعمال الفنية العربية';
-    window.history.pushState({}, '', '/');
   };
 
   const handleSelectArtworkById = (artId: string, fallbackNotif?: any) => {
@@ -87,7 +117,6 @@ function MainApp() {
       if (art) {
         handleSelectArtwork(art);
       } else {
-        // Secondary fallback search through approved artworks
         fetchApprovedArtworks('الكل').then((allArtworks) => {
           const matched = allArtworks.find(
             (a) => a.id === artId || (fallbackNotif?.artTitle && a.title === fallbackNotif.artTitle)
@@ -96,7 +125,6 @@ function MainApp() {
           if (matched) {
             handleSelectArtwork(matched);
           } else if (fallbackNotif) {
-            // Guaranteed fallback artwork object to open detail modal seamlessly
             const fallbackArt: Artwork = {
               id: artId || `art_${Date.now()}`,
               title: fallbackNotif.artTitle || fallbackNotif.title || 'عمل فني',
@@ -119,18 +147,38 @@ function MainApp() {
     });
   };
 
+  const handleNavigateHome = () => {
+    setActiveView('home');
+    setSelectedArtwork(null);
+    document.title = 'معرض الفنون - منصة الفنانين والمصورين العرب';
+    window.history.pushState({}, '', '/');
+  };
+
+  const handleNavigateGallery = () => {
+    setActiveView('artworks');
+    setSelectedArtwork(null);
+    document.title = 'المعرض العام للأعمال المقبولة - منصة الفنانين والمصورين العرب';
+    window.history.pushState({}, '', '/artworks');
+  };
+
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200" dir="rtl">
       
       {/* Navigation Header */}
       <Navbar 
         activeView={activeView} 
-        setActiveView={setActiveView} 
+        setActiveView={(view) => {
+          setActiveView(view);
+          setSelectedArtwork(null);
+          if (view === 'home') window.history.pushState({}, '', '/');
+          if (view === 'artworks') window.history.pushState({}, '', '/artworks');
+          if (view === 'profile') window.history.pushState({}, '', '/profile');
+          if (view === 'admin') window.history.pushState({}, '', '/admin');
+        }} 
         selectedCategory={selectedCategory}
         onSelectCategory={handleSelectCategory}
         onSelectArtwork={handleSelectArtworkById}
       />
-
 
       {/* Main Content Area */}
       <main className="flex-1">
@@ -157,6 +205,29 @@ function MainApp() {
           </div>
         )}
 
+        {activeView === 'artworks' && (
+          <PublicGalleryPage
+            onSelectArtwork={handleSelectArtwork}
+            onNavigateHome={handleNavigateHome}
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
+          />
+        )}
+
+        {activeView === 'artwork_detail' && (
+          <PublicArtworkPage
+            artworkId={publicArtworkId || (selectedArtwork?.id || '')}
+            onNavigateHome={handleNavigateHome}
+            onNavigateGallery={handleNavigateGallery}
+            onSelectArtwork={handleSelectArtwork}
+            onSelectArtist={(artistName) => {
+              setSelectedCategory('الكل');
+              setActiveView('artworks');
+              window.history.pushState({}, '', '/artworks');
+            }}
+          />
+        )}
+
         {activeView === 'profile' && (
           <MyProfilePage onSelectArtwork={handleSelectArtwork} />
         )}
@@ -169,18 +240,11 @@ function MainApp() {
       {/* Footer */}
       <Footer />
 
-      {/* Modals */}
-      <ArtworkDetailModal
-        artwork={selectedArtwork}
-        onClose={handleCloseDetailModal}
-        onSelectArtwork={handleSelectArtwork}
-      />
-
+      {/* Modals & Overlays */}
       <UploadModal onSuccess={() => setActiveView('profile')} />
       <AuthModal />
       <ThemeSettingsModal />
       <NotificationToastContainer onSelectArtwork={handleSelectArtworkById} />
-
 
     </div>
   );

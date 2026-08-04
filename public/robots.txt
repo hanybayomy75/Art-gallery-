@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Allow: /art/
+Allow: /api/artwork-image/
+Disallow: /admin
+
+Sitemap: /sitemap.xml

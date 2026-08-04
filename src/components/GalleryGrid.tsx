@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Artwork, SortOption } from '../types';
-import { fetchApprovedArtworks, subscribeToApprovedArtworks, DEFAULT_CATEGORIES } from '../lib/artworks';
+import { Artwork, SortOption, CategoryItem } from '../types';
+import { fetchApprovedArtworks, subscribeToApprovedArtworks } from '../lib/artworks';
+import { subscribeToCategories } from '../lib/categories';
 import { ArtworkCard } from './ArtworkCard';
 import { Search, SlidersHorizontal, Sparkles, Filter, RefreshCw, Upload, Crown, Layers } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -19,11 +20,19 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
   const { user } = useAuth();
   const [artworks, setArtworks] = useState<Artwork[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeCategories, setActiveCategories] = useState<string[]>(['الكل']);
 
   // Filters
   const [internalCategory, setInternalCategory] = useState('الكل');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('newest');
+
+  useEffect(() => {
+    const unsub = subscribeToCategories((cats) => {
+      setActiveCategories(['الكل', ...cats.map((c) => c.name)]);
+    }, false);
+    return () => unsub();
+  }, []);
 
   const selectedCategory = propCategory !== undefined ? propCategory : internalCategory;
 
@@ -100,8 +109,8 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
       </div>
 
       {/* Category Scroll Filter Chips */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {DEFAULT_CATEGORIES.map((cat) => {
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar">
+        {activeCategories.map((cat) => {
           const isSelected = selectedCategory === cat;
           return (
             <button

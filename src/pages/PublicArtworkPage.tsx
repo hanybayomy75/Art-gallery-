@@ -5,6 +5,7 @@ import { db } from '../lib/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { ArtworkFrame, FRAME_OPTIONS } from '../components/ArtworkFrame';
 import { StarRating } from '../components/StarRating';
+import { SocialShareBar } from '../components/SocialShareBar';
 import { 
   fetchArtworkById, 
   fetchApprovedArtworks, 
@@ -17,7 +18,8 @@ import {
   rateArtwork, 
   getUserArtworkRating, 
   getArtworkRatingMeta, 
-  getArtistPrefix 
+  getArtistPrefix,
+  getArtworkCategories
 } from '../lib/artworks';
 import { isArtworkFavorite, toggleFavoriteArtwork } from '../lib/favorites';
 import { getOptimizedImageUrl } from '../lib/cloudinary';
@@ -253,19 +255,16 @@ export const PublicArtworkPage: React.FC<PublicArtworkPageProps> = ({
   // Handle Rating
   const handleRate = async (ratingVal: number) => {
     if (!artwork) return;
-    requireAuth('يرجى تسجيل الدخول لتقييم الأعمال الفنية', async () => {
-      if (!user) return;
-      setUserRating(ratingVal);
-      const res = await rateArtwork(
-        artwork.id, 
-        ratingVal, 
-        user.uid, 
-        { displayName: userProfile?.displayName || user.email || 'مستخدم' }
-      );
-      if (res) {
-        setRatingMeta({ ratingAverage: res.ratingAverage, ratingCount: res.ratingCount });
-      }
-    });
+    setUserRating(ratingVal);
+    const res = await rateArtwork(
+      artwork.id, 
+      ratingVal, 
+      user?.uid, 
+      userProfile ? { displayName: userProfile.displayName, photoURL: userProfile.photoURL } : undefined
+    );
+    if (res) {
+      setRatingMeta({ ratingAverage: res.ratingAverage, ratingCount: res.ratingCount });
+    }
   };
 
   // Handle Favorite Toggle
@@ -499,12 +498,22 @@ export const PublicArtworkPage: React.FC<PublicArtworkPageProps> = ({
             
             <div className="bg-[var(--bg-card)] rounded-3xl p-6 sm:p-8 border border-[var(--border-card)] shadow-md space-y-6">
               
-              {/* Category Tag & Category Link */}
-              <div className="flex items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-bold text-xs">
-                  <Tag className="w-3.5 h-3.5" />
-                  {artwork.category || 'لوحات فنية'}
-                </span>
+              {/* Category Tags & Category Links */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {getArtworkCategories(artwork).categories.map((catName) => (
+                    <button
+                      key={catName}
+                      type="button"
+                      onClick={() => onNavigateGallery && onNavigateGallery()}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] font-bold text-xs transition-colors"
+                      title={`عرض كل الأعمال الفنية في تصنيف: ${catName}`}
+                    >
+                      <Tag className="w-3.5 h-3.5" />
+                      {catName}
+                    </button>
+                  ))}
+                </div>
 
                 <div className="flex items-center gap-3 text-xs text-slate-500">
                   <span className="flex items-center gap-1" title="عدد المشاهدات">
@@ -560,11 +569,14 @@ export const PublicArtworkPage: React.FC<PublicArtworkPageProps> = ({
                 </div>
                 <div className="flex items-center gap-2 pt-1">
                   <StarRating
-                    rating={userRating || ratingMeta.ratingAverage}
+                    ratingAverage={ratingMeta.ratingAverage}
+                    ratingCount={ratingMeta.ratingCount}
+                    userRating={userRating}
                     onRate={handleRate}
+                    interactive={true}
                     size="md"
                   />
-                  {userRating > 0 && (
+                  {userRating !== null && userRating > 0 && (
                     <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
                       تم تقييمك ({userRating} نجوم)
                     </span>
@@ -631,51 +643,13 @@ export const PublicArtworkPage: React.FC<PublicArtworkPageProps> = ({
                   <Share2 className="w-3.5 h-3.5" /> نشر العمل الفني على وسائل التواصل:
                 </span>
                 
-                <div className="grid grid-cols-4 gap-2">
-                  {/* WhatsApp */}
-                  <a
-                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`${shareTitle}\n${shareUrl}`)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs flex items-center justify-center transition-all"
-                    title="مشاركة عبر واتساب"
-                  >
-                    واتساب
-                  </a>
-
-                  {/* Telegram */}
-                  <a
-                    href={`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-2.5 px-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white font-bold text-xs flex items-center justify-center transition-all"
-                    title="مشاركة عبر تلجرام"
-                  >
-                    تلجرام
-                  </a>
-
-                  {/* X / Twitter */}
-                  <a
-                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareTitle)}&url=${encodeURIComponent(shareUrl)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs flex items-center justify-center transition-all"
-                    title="مشاركة عبر منصة X"
-                  >
-                    تويتر
-                  </a>
-
-                  {/* Facebook */}
-                  <a
-                    href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center transition-all"
-                    title="مشاركة عبر فيسبوك"
-                  >
-                    فيسبوك
-                  </a>
-                </div>
+                <SocialShareBar
+                  shareUrl={shareUrl}
+                  title={shareTitle}
+                  artworkTitle={artwork.title}
+                  artistName={artwork.artistName || artwork.userName || 'فنان المعرض'}
+                  category={artwork.category}
+                />
               </div>
 
             </div>

@@ -40,7 +40,9 @@ export interface Artwork {
   id: string;
   title: string;
   description: string;
-  category: string;
+  category: string; // Legacy primary category name
+  primaryCategory?: string; // New primary category name
+  categories?: string[]; // Array of categories for multi-category filtering
   tags: string[];
   imageUrl: string;
   cloudinaryPublicId?: string;
@@ -81,12 +83,21 @@ export interface ArtworkComment {
 export type ThemePreset = 'classic' | 'modern' | 'dark_art' | 'watercolor' | 'white_gallery';
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
-export interface Category {
+export interface CategoryItem {
   id: string;
   name: string;
-  icon?: string;
+  slug: string;
+  group: string;
   description?: string;
+  isActive: boolean;
+  sortOrder: number;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
 }
+
+export type Category = CategoryItem;
 
 export interface ContactMessage {
   id: string;

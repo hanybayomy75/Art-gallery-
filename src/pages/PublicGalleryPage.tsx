@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Artwork, SortOption } from '../types';
+import { Artwork, SortOption, CategoryItem } from '../types';
 import { 
-  DEFAULT_CATEGORIES, 
   subscribeToApprovedArtworks, 
   getArtworkRatingMeta,
   getArtistPrefix 
 } from '../lib/artworks';
+import { subscribeToCategories } from '../lib/categories';
 import { getOptimizedImageUrl } from '../lib/cloudinary';
 import { 
   Search, 
@@ -40,6 +40,16 @@ export const PublicGalleryPage: React.FC<PublicGalleryPageProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortOption, setSortOption] = useState<SortOption>('newest');
+  const [activeCategories, setActiveCategories] = useState<string[]>(['الكل']);
+
+  // Subscribe to dynamic active categories from Firestore
+  useEffect(() => {
+    const unsub = subscribeToCategories((cats) => {
+      const names = ['الكل', ...cats.map((c) => c.name)];
+      setActiveCategories(names);
+    }, false); // active only
+    return () => unsub();
+  }, []);
 
   // Sync initial category when prop changes
   useEffect(() => {
@@ -126,8 +136,8 @@ export const PublicGalleryPage: React.FC<PublicGalleryPageProps> = ({
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[var(--bg-card)] p-4 rounded-3xl border border-[var(--border-card)] shadow-sm">
           
           {/* Categories */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
-            {DEFAULT_CATEGORIES.map((cat) => (
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 custom-scrollbar">
+            {activeCategories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => handleCategoryClick(cat)}

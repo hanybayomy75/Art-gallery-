@@ -7,8 +7,16 @@ import {
   deleteArtwork, 
   toggleFeaturedArtwork,
   updateArtworkData,
-  DEFAULT_CATEGORIES
+  DEFAULT_CATEGORIES,
+  getArtworkCategories
 } from '../lib/artworks';
+import {
+  subscribeToCategories,
+  addCategory,
+  updateCategory,
+  deleteCategory,
+  toggleCategoryStatus
+} from '../lib/categories';
 import { ArtworkFrame, FRAME_OPTIONS, FILTER_OPTIONS } from '../components/ArtworkFrame';
 import { 
   fetchContactMessages, 
@@ -18,7 +26,7 @@ import {
 import { db } from '../lib/firebase';
 import { collection, getDocs, doc, updateDoc, query, where } from 'firebase/firestore';
 import { addAppNotification } from '../lib/notifications';
-import { Artwork, UserProfile, UserRole, ContactMessage, FrameStyle, FilterStyle } from '../types';
+import { Artwork, UserProfile, UserRole, ContactMessage, FrameStyle, FilterStyle, CategoryItem } from '../types';
 import { 
   ShieldAlert, 
   CheckCircle2, 
@@ -43,7 +51,15 @@ import {
   Tag,
   HeartHandshake,
   SendHorizontal,
-  BellRing
+  BellRing,
+  FolderTree,
+  Plus,
+  Layers,
+  EyeOff,
+  AlertTriangle,
+  Search,
+  Check,
+  ChevronDown
 } from 'lucide-react';
 
 const WELCOME_PRESETS = [
@@ -83,13 +99,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
   const isOwner = userProfile?.role === 'owner' || user?.email?.toLowerCase() === 'hany.bayomy75@gmail.com';
   const isAdmin = userProfile?.role === 'admin' || isOwner;
 
-  const [activeTab, setActiveTab] = useState<'pending' | 'all' | 'messages' | 'users'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'all' | 'categories' | 'messages' | 'users'>('pending');
   
   const [pendingWorks, setPendingWorks] = useState<Artwork[]>([]);
   const [allWorks, setAllWorks] = useState<Artwork[]>([]);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Categories management state
+  const [categoriesList, setCategoriesList] = useState<CategoryItem[]>([]);
+  const [categorySearch, setCategorySearch] = useState('');
+  const [categoryGroupFilter, setCategoryGroupFilter] = useState('الكل');
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
+  const [catFormName, setCatFormName] = useState('');
+  const [catFormGroup, setCatFormGroup] = useState('لوحات وفنون تشكيلية');
+  const [catFormDesc, setCatFormDesc] = useState('');
+  const [catFormSortOrder, setCatFormSortOrder] = useState<number>(0);
+  const [catFormIsActive, setCatFormIsActive] = useState<boolean>(true);
+  const [catFormError, setCatFormError] = useState<string | null>(null);
+  const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [deletingCatError, setDeletingCatError] = useState<string | null>(null);
+
+  // Subscribe to categories
+  useEffect(() => {
+    const unsub = subscribeToCategories((cats) => {
+      setCategoriesList(cats);
+    }, true); // include hidden
+    return () => unsub();
+  }, []);
 
   // Rejection modal state
   const [rejectingArtId, setRejectingArtId] = useState<string | null>(null);
@@ -297,6 +336,101 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
       );
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Category Handlers
+  const handleOpenCreateCategory = () => {
+    setEditingCategory(null);
+    setCatFormName('');
+    setCatFormGroup('لوحات وفنون تشكيلية');
+    setCatFormDesc('');
+    setCatFormSortOrder(categoriesList.length + 1);
+    setCatFormIsActive(true);
+    setCatFormError(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleOpenEditCategory = (cat: CategoryItem) => {
+    setEditingCategory(cat);
+    setCatFormName(cat.name);
+    setCatFormGroup(cat.group || 'لوحات وفنون تشكيلية');
+    setCatFormDesc(cat.description || '');
+    setCatFormSortOrder(cat.sortOrder ?? 0);
+    setCatFormIsActive(cat.isActive ?? true);
+    setCatFormError(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!catFormName.trim()) {
+      setCatFormError('يرجى إدخال اسم التصنيف');
+      return;
+    }
+    setIsSavingCategory(true);
+    setCatFormError(null);
+
+    try {
+      let res;
+      if (editingCategory) {
+        res = await updateCategory(
+          editingCategory.id,
+          {
+            name: catFormName.trim(),
+            group: catFormGroup.trim(),
+            description: catFormDesc.trim(),
+            sortOrder: Number(catFormSortOrder),
+            isActive: catFormIsActive
+          },
+          categoriesList
+        );
+      } else {
+        res = await addCategory(
+          {
+            name: catFormName.trim(),
+            group: catFormGroup.trim(),
+            description: catFormDesc.trim(),
+            sortOrder: Number(catFormSortOrder),
+            isActive: catFormIsActive
+          },
+          user?.uid || 'admin',
+          categoriesList
+        );
+      }
+
+      if (!res.success) {
+        setCatFormError(res.message || 'تعذر حفظ التصنيف');
+      } else {
+        setIsCategoryModalOpen(false);
+      }
+    } catch (err: any) {
+      setCatFormError(err.message || 'حدث خطأ أثناء حفظ التصنيف');
+    } finally {
+      setIsSavingCategory(false);
+    }
+  };
+
+  const handleDeleteCategoryItem = async (cat: CategoryItem) => {
+    setDeletingCatError(null);
+
+    if (!confirm(`هل أنت تأكد من إزالة التصنيف "${cat.name}"؟`)) return;
+
+    try {
+      const res = await deleteCategory(cat);
+      if (!res.success) {
+        setDeletingCatError(res.message || 'تعذر حذف التصنيف');
+      }
+    } catch (err: any) {
+      setDeletingCatError(err.message || 'حدث خطأ أثناء حذف التصنيف');
+    }
+  };
+
+  const handleToggleCategoryActive = async (cat: CategoryItem) => {
+    try {
+      await toggleCategoryStatus(cat.id, cat.isActive);
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء تغيير حالة التصنيف');
     }
   };
 
@@ -510,6 +644,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
         >
           <Eye className="w-4 h-4" />
           إدارة جميع الأعمال ({allWorks.length})
+        </button>
+
+        <button
+          onClick={() => setActiveTab('categories')}
+          className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shrink-0 ${
+            activeTab === 'categories'
+              ? 'bg-amber-600 text-white shadow-md'
+              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <FolderTree className="w-4 h-4" />
+          نظام التصنيفات ({categoriesList.length})
         </button>
 
         <button
@@ -730,7 +876,211 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
         </div>
       )}
 
-      {/* Tab 3: Contact Us Messages */}
+      {/* Tab 2.5: Dynamic Categories Management */}
+      {activeTab === 'categories' && (
+        <div className="space-y-6">
+          {/* Categories Stats Summary */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200/50 text-center">
+              <p className="text-2xl font-bold font-serif text-amber-600">{categoriesList.length}</p>
+              <p className="text-xs text-amber-700/80 font-medium">إجمالي التصنيفات</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/50 text-center">
+              <p className="text-2xl font-bold font-serif text-emerald-600">
+                {categoriesList.filter((c) => c.isActive !== false).length}
+              </p>
+              <p className="text-xs text-emerald-700/80 font-medium">تصنيفات نشطة</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center">
+              <p className="text-2xl font-bold font-serif text-slate-600 dark:text-slate-300">
+                {categoriesList.filter((c) => c.isActive === false).length}
+              </p>
+              <p className="text-xs text-slate-500 font-medium">تصنيفات مخفية</p>
+            </div>
+            <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200/50 text-center">
+              <p className="text-2xl font-bold font-serif text-indigo-600">
+                {new Set(categoriesList.map((c) => c.group || 'لوحات وفنون تشكيلية')).size}
+              </p>
+              <p className="text-xs text-indigo-700/80 font-medium">المجموعات الرئيسية</p>
+            </div>
+          </div>
+
+          {/* Delete Warning Banner */}
+          {deletingCatError && (
+            <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-start justify-between gap-3 text-rose-800 dark:text-rose-200 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                <p className="text-xs font-bold leading-relaxed">{deletingCatError}</p>
+              </div>
+              <button
+                onClick={() => setDeletingCatError(null)}
+                className="p-1 rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Control Bar: Search, Group Filter, Add Button */}
+          <div className="bg-[var(--bg-card)] p-4 sm:p-5 rounded-3xl border border-[var(--border-card)] shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              {/* Search */}
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 absolute top-3 right-3 text-slate-400" />
+                <input
+                  type="text"
+                  value={categorySearch}
+                  onChange={(e) => setCategorySearch(e.target.value)}
+                  placeholder="البحث في التصنيفات..."
+                  className="w-full pr-9 pl-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                />
+              </div>
+
+              {/* Filter Group */}
+              <select
+                value={categoryGroupFilter}
+                onChange={(e) => setCategoryGroupFilter(e.target.value)}
+                className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              >
+                <option value="الكل">جميع المجموعات</option>
+                {Array.from(new Set(categoriesList.map((c) => c.group || 'لوحات وفنون تشكيلية'))).map((grp) => (
+                  <option key={grp} value={grp}>{grp}</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={handleOpenCreateCategory}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة تصنيف جديد</span>
+            </button>
+          </div>
+
+          {/* Categories Grid / List */}
+          <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border-card)] p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-card)]">
+              <h3 className="text-sm font-bold font-serif text-slate-900 dark:text-white flex items-center gap-2">
+                <FolderTree className="w-4 h-4 text-amber-500" />
+                قائمة التصنيفات الابتدائية والديناميكية
+              </h3>
+              <span className="text-xs text-slate-400 font-medium">
+                تحديث تلقائي من Firestore
+              </span>
+            </div>
+
+            {categoriesList.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 text-xs">
+                جاري تحميل التصنيفات أو لا توجد تصنيفات معرفة بعد.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {categoriesList
+                  .filter((cat) => {
+                    const matchesSearch =
+                      !categorySearch ||
+                      cat.name.toLowerCase().includes(categorySearch.toLowerCase()) ||
+                      (cat.description && cat.description.toLowerCase().includes(categorySearch.toLowerCase()));
+                    const matchesGroup =
+                      categoryGroupFilter === 'الكل' || (cat.group || 'لوحات وفنون تشكيلية') === categoryGroupFilter;
+                    return matchesSearch && matchesGroup;
+                  })
+                  .map((cat) => {
+                    const usageCount = allWorks.filter((a) => {
+                      const { categories } = getArtworkCategories(a);
+                      return categories.includes(cat.name) || a.category === cat.name;
+                    }).length;
+
+                    return (
+                      <div
+                        key={cat.id}
+                        className={`p-4 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
+                          cat.isActive !== false
+                            ? 'bg-slate-50/80 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/80'
+                            : 'bg-slate-100/50 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 opacity-75'
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600 font-bold">
+                                <Tag className="w-4 h-4" />
+                              </span>
+                              <div>
+                                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                  {cat.name}
+                                </h4>
+                                <span className="text-[10px] text-slate-400 font-mono dir-ltr block">
+                                  {cat.slug || cat.id}
+                                </span>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                                cat.isActive !== false
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-slate-200 dark:bg-slate-800 text-slate-500'
+                              }`}
+                            >
+                              {cat.isActive !== false ? 'نشط' : 'مخفي'}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                            {cat.description || 'لا يوجد وصف محدد لهذا التصنيف.'}
+                          </p>
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold text-slate-500 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md">
+                              {cat.group || 'لوحات وفنون تشكيلية'}
+                            </span>
+                            <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                              {usageCount} عمل
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleToggleCategoryActive(cat)}
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                cat.isActive !== false
+                                  ? 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                  : 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/40'
+                              }`}
+                              title={cat.isActive !== false ? 'إخفاء التصنيف من المعرض' : 'تفعيل وإظهار التصنيف'}
+                            >
+                              {cat.isActive !== false ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+
+                            <button
+                              onClick={() => handleOpenEditCategory(cat)}
+                              className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors"
+                              title="تعديل التصنيف"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteCategoryItem(cat)}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                              title="حذف التصنيف"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {activeTab === 'messages' && (
         <div className="space-y-6">
           <div className="bg-[var(--bg-card)] rounded-3xl border border-[var(--border-card)] p-6 space-y-4">
@@ -1280,6 +1630,154 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onSelectArtwork 
                 {isSendingWelcome ? 'جاري إرسال الإشعار...' : 'إرسال الإشعار الترحيبي الفوري'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Add/Edit Modal */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+          <div className="bg-[var(--bg-card)] rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-[var(--border-card)] space-y-5 text-right relative shadow-2xl">
+            <button
+              onClick={() => setIsCategoryModalOpen(false)}
+              className="absolute top-5 left-5 p-2 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-[var(--border-card)] pb-4">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center shrink-0">
+                <FolderTree className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold font-serif text-slate-900 dark:text-white">
+                  {editingCategory ? 'تعديل التصنيف' : 'إضافة تصنيف جديد'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  إدارة وتخصيص التصنيفات الابتدائية والديناميكية للمعرض دون الحاجة إلى تعديل الكود.
+                </p>
+              </div>
+            </div>
+
+            {catFormError && (
+              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs font-bold flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
+                <span>{catFormError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveCategory} className="space-y-4">
+              {/* Category Name */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  اسم التصنيف <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={catFormName}
+                  onChange={(e) => setCatFormName(e.target.value)}
+                  placeholder="مثال: لوحات تجريدية، تصوير بورتريه، خط ديواني..."
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                />
+              </div>
+
+              {/* Group */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  المجموعة الرئيسية
+                </label>
+                <div className="space-y-2">
+                  <select
+                    value={catFormGroup}
+                    onChange={(e) => setCatFormGroup(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                  >
+                    <option value="لوحات وفنون تشكيلية">لوحات وفنون تشكيلية</option>
+                    <option value="خط عربي وزخرفة">خط عربي وزخرفة</option>
+                    <option value="تصوير فوتوغرافي">تصوير فوتوغرافي</option>
+                    <option value="تصميم وجرافيك">تصميم وجرافيك</option>
+                    <option value="فنون رسم رقمي">فنون رسم رقمي</option>
+                    <option value="تصنيفات أخرى">تصنيفات أخرى</option>
+                  </select>
+
+                  <input
+                    type="text"
+                    value={catFormGroup}
+                    onChange={(e) => setCatFormGroup(e.target.value)}
+                    placeholder="أو اكتب اسم مجموعة جديدة..."
+                    className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  وصف التصنيف (اختياري)
+                </label>
+                <textarea
+                  rows={2}
+                  value={catFormDesc}
+                  onChange={(e) => setCatFormDesc(e.target.value)}
+                  placeholder="وصف مختصر يوضح نوعية الأعمال المندرجة تحت هذا التصنيف..."
+                  className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Sort Order & Active Toggle */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    ترتيب الظهور
+                  </label>
+                  <input
+                    type="number"
+                    value={catFormSortOrder}
+                    onChange={(e) => setCatFormSortOrder(Number(e.target.value))}
+                    className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                    حالة التصنيف
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setCatFormIsActive(!catFormIsActive)}
+                    className={`w-full py-2.5 px-4 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                      catFormIsActive
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-slate-100 text-slate-600 border border-slate-300'
+                    }`}
+                  >
+                    {catFormIsActive ? <Check className="w-4 h-4 text-emerald-600" /> : <EyeOff className="w-4 h-4" />}
+                    <span>{catFormIsActive ? 'نشط في المعرض' : 'مخفي من القوائم'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-between gap-3 pt-4 border-t border-[var(--border-card)]">
+                <button
+                  type="button"
+                  onClick={() => setIsCategoryModalOpen(false)}
+                  className="px-5 py-2.5 rounded-2xl text-xs font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  إلغاء
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isSavingCategory}
+                  className="px-6 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  {isSavingCategory ? 'جاري الحفظ...' : editingCategory ? 'تحديث التصنيف' : 'حفظ التصنيف الجديد'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

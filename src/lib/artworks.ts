@@ -121,6 +121,19 @@ export function notifyArtworkChange(): void {
   }
 }
 
+export function getArtworkCategories(art: Partial<Artwork>): { primaryCategory: string; categories: string[] } {
+  if (!art) return { primaryCategory: 'لوحات فنية', categories: ['لوحات فنية'] };
+  const primary = (art.primaryCategory || art.category || 'لوحات فنية').trim();
+  let cats = Array.isArray(art.categories) && art.categories.length > 0 
+    ? art.categories.map((c) => c.trim()).filter(Boolean)
+    : [primary];
+    
+  if (!cats.includes(primary)) {
+    cats = [primary, ...cats];
+  }
+  return { primaryCategory: primary, categories: Array.from(new Set(cats)) };
+}
+
 // Helper function to process raw approved artworks with filtering and sorting
 function processApprovedArtworksList(
   rawList: Artwork[],
@@ -133,27 +146,24 @@ function processApprovedArtworksList(
 
   // Category filter
   const cleanFilter = (categoryFilter || 'الكل').trim();
-  let effectiveCategory = cleanFilter;
-
-  if (
-    effectiveCategory !== 'الكل' && 
-    effectiveCategory !== 'أعمال الفنانين المرفوعة' && 
-    !DEFAULT_CATEGORIES.includes(effectiveCategory)
-  ) {
-    effectiveCategory = 'الكل';
-  }
+  const effectiveCategory = cleanFilter;
 
   if (effectiveCategory !== 'الكل' && effectiveCategory !== 'أعمال الفنانين المرفوعة') {
     const isPhotoSearch = isPhotographyCategory(effectiveCategory);
     finalCombined = finalCombined.filter((art) => {
+      const { primaryCategory, categories } = getArtworkCategories(art);
       const artCat = (art.category || '').trim();
+
       if (isPhotoSearch) {
-        if (isPhotographyCategory(artCat)) return true;
+        if (isPhotographyCategory(artCat) || isPhotographyCategory(primaryCategory)) return true;
+        if (categories.some((c) => isPhotographyCategory(c))) return true;
         if (art.tags?.some((t) => isPhotographyCategory(t))) return true;
       }
-      if (artCat === effectiveCategory) return true;
+
+      if (artCat === effectiveCategory || primaryCategory === effectiveCategory) return true;
+      if (categories.includes(effectiveCategory)) return true;
       if (art.tags?.some((t) => (t || '').trim() === effectiveCategory)) return true;
-      if (effectiveCategory === 'لوحات فنية' && (!ARTWORK_CATEGORIES.includes(artCat) || artCat === 'لوحات فنية')) return true;
+
       return false;
     });
   }
@@ -448,8 +458,21 @@ export async function fetchAllArtworksForAdmin(): Promise<Artwork[]> {
 export async function createArtwork(
   data: Omit<Artwork, 'id' | 'likesCount' | 'commentsCount' | 'createdAt'> & { status?: ArtworkStatus }
 ): Promise<string> {
+  const primaryCategory = (data.primaryCategory || data.category || 'لوحات فنية').trim();
+  let categoriesArr = Array.isArray(data.categories) && data.categories.length > 0
+    ? data.categories.map((c) => c.trim()).filter(Boolean)
+    : [primaryCategory];
+
+  if (!categoriesArr.includes(primaryCategory)) {
+    categoriesArr = [primaryCategory, ...categoriesArr];
+  }
+  categoriesArr = Array.from(new Set(categoriesArr));
+
   const newArtworkData = {
     ...data,
+    category: primaryCategory, // Backwards compatibility
+    primaryCategory: primaryCategory,
+    categories: categoriesArr,
     status: data.status || ('pending' as ArtworkStatus),
     rejectionReason: '',
     isFeatured: false,

@@ -1,9 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { uploadImageToCloudinary } from '../lib/cloudinary';
-import { createArtwork, DEFAULT_CATEGORIES } from '../lib/artworks';
-import { X, Upload, Image as ImageIcon, Sparkles, CheckCircle2, AlertCircle, ShieldCheck, Plus, Trash2 } from 'lucide-react';
-import { ArtworkStatus, FrameStyle, FilterStyle } from '../types';
+import { createArtwork } from '../lib/artworks';
+import { subscribeToCategories } from '../lib/categories';
+import { X, Upload, Image as ImageIcon, Sparkles, CheckCircle2, AlertCircle, ShieldCheck, Plus, Trash2, Tag, Check } from 'lucide-react';
+import { ArtworkStatus, FrameStyle, FilterStyle, CategoryItem } from '../types';
 import { FRAME_OPTIONS, FILTER_OPTIONS } from './ArtworkFrame';
 
 interface UploadModalProps {
@@ -16,12 +17,16 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
   const [files, setFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const [title, setTitle] = useState('');
-  const [category, setCategory] = useState('لوحات فنية');
+  const [primaryCategory, setPrimaryCategory] = useState('لوحات فنية');
+  const [extraCategories, setExtraCategories] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [tagsInput, setTagsInput] = useState('');
   const [artistName, setArtistName] = useState(userProfile?.artistName || userProfile?.displayName || '');
   const [frameStyle, setFrameStyle] = useState<FrameStyle>('none');
   const [filterStyle, setFilterStyle] = useState<FilterStyle>('normal');
+
+  const [categoriesList, setCategoriesList] = useState<CategoryItem[]>([]);
+  const [showExtraSelector, setShowExtraSelector] = useState(false);
 
   const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -31,9 +36,28 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (!isUploadModalOpen) return;
+    const unsub = subscribeToCategories((cats) => {
+      setCategoriesList(cats);
+      if (cats.length > 0 && (!primaryCategory || !cats.some((c) => c.name === primaryCategory))) {
+        setPrimaryCategory(cats[0].name);
+      }
+    }, false); // only active categories
+    return () => unsub();
+  }, [isUploadModalOpen]);
+
   if (!isUploadModalOpen) return null;
 
   const isAdminOrOwner = userProfile?.role === 'admin' || userProfile?.role === 'owner';
+
+  // Group active categories by group name
+  const groupedCategories: Record<string, CategoryItem[]> = {};
+  categoriesList.forEach((c) => {
+    const grp = c.group || 'تصنيفات أخرى';
+    if (!groupedCategories[grp]) groupedCategories[grp] = [];
+    groupedCategories[grp].push(c);
+  });
 
   const handleFilesSelect = (selectedFileList: FileList | File[]) => {
     setError(null);
@@ -136,10 +160,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
         }
 
         // Save artwork document in Firestore/LocalStorage
+        const allChosenCategories = Array.from(new Set([primaryCategory, ...extraCategories]));
         return createArtwork({
           title: itemTitle,
           description: description.trim(),
-          category,
+          category: primaryCategory,
+          primaryCategory: primaryCategory,
+          categories: allChosenCategories,
           tags: tagsArray,
           imageUrl: cloudRes.secure_url,
           cloudinaryPublicId: cloudRes.public_id,
@@ -190,7 +217,9 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
     setFiles([]);
     setPreviewUrls([]);
     setTitle('');
-    setCategory('لوحات فنية');
+    if (categoriesList.length > 0) setPrimaryCategory(categoriesList[0].name);
+    setExtraCategories([]);
+    setShowExtraSelector(false);
     setDescription('');
     setTagsInput('');
     setUploadProgress(0);
@@ -199,7 +228,12 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
     setSuccessMsg(null);
   };
 
-  const filteredCategories = DEFAULT_CATEGORIES.filter((c) => c !== 'الكل' && c !== 'أعمال الفنانين المرفوعة');
+  const toggleExtraCategory = (catName: string) => {
+    if (catName === primaryCategory) return;
+    setExtraCategories((prev) =>
+      prev.includes(catName) ? prev.filter((c) => c !== catName) : [...prev, catName]
+    );
+  };
 
   return (
     <div 
@@ -372,33 +406,116 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onSuccess }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                التصنيف الفني <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              >
-                {filteredCategories.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
+          {/* Category & Extra Categories Selection */}
+          <div className="space-y-3 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  التصنيف الرئيسي <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={primaryCategory}
+                  onChange={(e) => {
+                    const newPrimary = e.target.value;
+                    setPrimaryCategory(newPrimary);
+                    setExtraCategories((prev) => prev.filter((c) => c !== newPrimary));
+                  }}
+                  className="w-full px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] shadow-sm"
+                >
+                  {Object.entries(groupedCategories).map(([groupName, items]) => (
+                    <optgroup key={groupName} label={`── ${groupName} ──`}>
+                      {items.map((c) => (
+                        <option key={c.id} value={c.name}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  كلمات مفتاحية (تاجات اختيارية)
+                </label>
+                <input
+                  type="text"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  placeholder="ألوان زاهية، طبيعة، ألوان مائية..."
+                  className="w-full px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] shadow-sm"
+                />
+              </div>
             </div>
 
+            {/* Extra Categories Section */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-                كلمات مفتاحية (تاجات اختيارية)
-              </label>
-              <input
-                type="text"
-                value={tagsInput}
-                onChange={(e) => setTagsInput(e.target.value)}
-                placeholder="ألوان زاهية، طبيعة، ألوان مائية..."
-                className="w-full px-4 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-              />
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  تصنيفات إضافية للعمل (اختياري)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowExtraSelector(!showExtraSelector)}
+                  className="text-xs font-bold text-[var(--color-primary)] hover:underline flex items-center gap-1"
+                >
+                  {showExtraSelector ? 'إخفاء القائمة' : '+ اختيار تصنيفات أخرى'}
+                </button>
+              </div>
+
+              {/* Selected Extra Badges */}
+              {extraCategories.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {extraCategories.map((catName) => (
+                    <span
+                      key={catName}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/20"
+                    >
+                      {catName}
+                      <button
+                        type="button"
+                        onClick={() => toggleExtraCategory(catName)}
+                        className="hover:text-rose-500 transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {showExtraSelector && (
+                <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 max-h-48 overflow-y-auto space-y-3 custom-scrollbar text-xs">
+                  {Object.entries(groupedCategories).map(([groupName, items]) => (
+                    <div key={groupName}>
+                      <span className="block font-bold text-slate-400 text-[10px] mb-1">{groupName}</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {items
+                          .filter((c) => c.name !== primaryCategory)
+                          .map((c) => {
+                            const isSelected = extraCategories.includes(c.name);
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => toggleExtraCategory(c.name)}
+                                className={`px-2.5 py-1 rounded-lg text-xs transition-all flex items-center gap-1 ${
+                                  isSelected
+                                    ? 'bg-[var(--color-primary)] text-white shadow-sm font-bold'
+                                    : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3" />}
+                                {c.name}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

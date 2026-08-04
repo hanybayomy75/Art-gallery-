@@ -3,6 +3,7 @@ import { Star } from 'lucide-react';
 
 interface StarRatingProps {
   ratingAverage?: number;
+  rating?: number; // fallback alias for ratingAverage
   ratingCount?: number;
   userRating?: number | null;
   ratingDistribution?: Record<number, number>;
@@ -15,12 +16,13 @@ interface StarRatingProps {
 }
 
 export const StarRating: React.FC<StarRatingProps> = ({
-  ratingAverage = 0,
+  ratingAverage,
+  rating,
   ratingCount = 0,
   userRating = null,
   ratingDistribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
   onRate,
-  interactive = false,
+  interactive,
   size = 'md',
   showLabel = true,
   showDistribution = true,
@@ -29,15 +31,18 @@ export const StarRating: React.FC<StarRatingProps> = ({
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const effectiveRatingAverage = ratingAverage !== undefined ? ratingAverage : (rating !== undefined ? rating : 0);
+  const isInteractive = interactive !== undefined ? interactive : Boolean(onRate);
+
   const starSizes = {
-    sm: 'w-3.5 h-3.5',
+    sm: 'w-4 h-4',
     md: 'w-5 h-5',
     lg: 'w-6 h-6'
   };
 
   const currentDisplayRating = hoverRating !== null 
     ? hoverRating 
-    : (userRating !== null ? userRating : ratingAverage);
+    : (userRating !== null ? userRating : effectiveRatingAverage);
 
   const ratingLabels: Record<number, string> = {
     1: 'سيء 😞',
@@ -48,7 +53,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
   };
 
   const handleStarClick = (stars: number) => {
-    if (!interactive || !onRate || isSubmitting) return;
+    if (!isInteractive || !onRate || isSubmitting) return;
     setIsSubmitting(true);
     try {
       onRate(stars);
@@ -61,7 +66,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
     <div className={`flex flex-col gap-2 ${className}`}>
       <div className="flex items-center gap-2 flex-wrap">
         {/* Star Buttons */}
-        <div className="flex items-center gap-1 dir-ltr" dir="ltr">
+        <div className="flex items-center gap-0.5 dir-ltr" dir="ltr">
           {[1, 2, 3, 4, 5].map((starIndex) => {
             const isFilled = currentDisplayRating >= starIndex;
             const isHalf = !isFilled && currentDisplayRating > starIndex - 1 && currentDisplayRating < starIndex;
@@ -70,19 +75,26 @@ export const StarRating: React.FC<StarRatingProps> = ({
               <button
                 key={starIndex}
                 type="button"
-                disabled={!interactive || isSubmitting}
-                onClick={() => handleStarClick(starIndex)}
-                onMouseEnter={() => interactive && setHoverRating(starIndex)}
-                onMouseLeave={() => interactive && setHoverRating(null)}
-                className={`transition-all duration-150 focus:outline-none ${
-                  interactive ? 'cursor-pointer hover:scale-125 active:scale-95' : 'cursor-default'
+                disabled={!isInteractive || isSubmitting}
+                onClick={() => {
+                  handleStarClick(starIndex);
+                  setHoverRating(null);
+                }}
+                onMouseEnter={() => isInteractive && setHoverRating(starIndex)}
+                onMouseLeave={() => isInteractive && setHoverRating(null)}
+                onTouchEnd={() => isInteractive && setHoverRating(null)}
+                className={`p-1 sm:p-1.5 rounded-xl transition-all duration-150 focus:outline-none flex items-center justify-center ${
+                  isInteractive
+                    ? 'cursor-pointer hover:bg-amber-500/10 hover:scale-125 active:scale-95'
+                    : 'cursor-default'
                 } ${isSubmitting ? 'opacity-60' : ''}`}
-                title={interactive ? `تقييم ${starIndex} نجوم` : `التقييم: ${ratingAverage.toFixed(1)}`}
+                title={isInteractive ? `تقييم ${starIndex} نجوم` : `التقييم: ${effectiveRatingAverage.toFixed(1)}`}
+                aria-label={`تقييم ${starIndex} من 5 نجوم`}
               >
                 <Star
-                  className={`${starSizes[size]} ${
+                  className={`${starSizes[size]} transition-all duration-150 ${
                     isFilled
-                      ? 'fill-amber-400 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]'
+                      ? 'fill-amber-400 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)] scale-105'
                       : isHalf
                       ? 'fill-amber-400/50 text-amber-400'
                       : 'fill-slate-200 text-slate-300 dark:fill-slate-800 dark:text-slate-700'
@@ -97,7 +109,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
         {showLabel && (
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
             <span className="text-amber-500 font-extrabold text-sm">
-              {ratingAverage > 0 ? ratingAverage.toFixed(1) : 'جديد'}
+              {effectiveRatingAverage > 0 ? effectiveRatingAverage.toFixed(1) : 'جديد'}
             </span>
             {ratingCount > 0 && (
               <span className="text-slate-400 text-[11px] font-medium">
@@ -109,7 +121,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
       </div>
 
       {/* Interactive feedback label */}
-      {interactive && showLabel && (
+      {isInteractive && showLabel && (
         <div className="text-xs font-medium text-slate-600 dark:text-slate-400 min-h-[1.25rem]">
           {hoverRating !== null ? (
             <span className="text-amber-600 dark:text-amber-400 font-bold animate-pulse">

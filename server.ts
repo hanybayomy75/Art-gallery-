@@ -63,6 +63,22 @@ function getArtistPrefix(category?: string): string {
   return 'بريشة الفنان';
 }
 
+function formatShareTitle(title?: string, artistName?: string, category?: string): string {
+  const cleanTitle = (title || 'عمل فني').trim();
+  const cleanArtist = (artistName || 'فنان المعرض').trim();
+  
+  if (isPhotographyCategory(category)) {
+    return `${cleanTitle} | تصوير ${cleanArtist}`;
+  }
+  
+  const cleanCat = (category || '').trim().toLowerCase();
+  if (cleanCat.includes('رسم') || cleanCat.includes('لوحة') || cleanCat.includes('تشكيلي')) {
+    return `${cleanTitle} | رسم الفنان ${cleanArtist}`;
+  }
+  
+  return `${cleanTitle} | ${cleanArtist}`;
+}
+
 // Health check route
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', name: 'معرض الفنون API' });
@@ -201,15 +217,19 @@ async function startServer() {
       if (artId) {
         const artDoc = await getDoc(doc(db, 'artworks', artId));
         if (artDoc.exists()) {
-          artworkData = artDoc.data();
+          const docData = artDoc.data();
+          // Strictly validate that only approved artworks get public social share cards
+          if (!docData.status || docData.status === 'approved') {
+            artworkData = docData;
+          }
         }
       }
 
       if (!artworkData) {
         artworkData = {
-          title: 'عمل فني مميز',
-          artistName: 'فنان المعرض',
-          description: 'استكشف هذه اللوحة الفنية الرائعة والعديد من الأعمال الفنية في منصة الفنانين والمصورين العرب.',
+          title: 'معرض الفنون العربية',
+          artistName: 'منصة الفنانين والمصورين العرب',
+          description: 'استكشف أجمل اللوحات الفنية والأعمال الفوتوغرافية في منصة معارض الفنون العربية.',
           imageUrl: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&h=630&fit=crop'
         };
       }
@@ -230,11 +250,19 @@ async function startServer() {
 
       const artist = artworkData.artistName || artworkData.userName || 'فنان المعرض';
       const rawTitle = artworkData.title || 'عمل فني';
-      const prefix = getArtistPrefix(artworkData.category);
-      const pageTitle = `${rawTitle} - ${prefix} ${artist} | معرض الفنون`;
+      const category = artworkData.category || 'لوحة فنية';
+      
+      const shareTitle = formatShareTitle(rawTitle, artist, category);
+      const pageTitle = `${shareTitle} | معرض الفنون`;
+
+      let prefix = `بريشة الفنان ${artist}`;
+      if (isPhotographyCategory(category)) {
+        prefix = `تصوير الفنان ${artist}`;
+      }
+
       const description = artworkData.description
-        ? (artworkData.description.length > 160 ? artworkData.description.slice(0, 157) + '...' : artworkData.description)
-        : `استكشف اللوحة الفنية "${rawTitle}" ${prefix} ${artist} في منصة الفنانين والمصورين العرب.`;
+        ? `${prefix}. ${artworkData.description.length > 150 ? artworkData.description.slice(0, 147) + '...' : artworkData.description} (التصنيف: ${category})`
+        : `شاهد العمل الفني "${rawTitle}" ${prefix} في منصة معارض الفنون العربية. التصنيف: ${category}.`;
       
       const xProto = req.get('x-forwarded-proto');
       const xHost = req.get('x-forwarded-host');
@@ -280,10 +308,10 @@ async function startServer() {
     <link rel="canonical" href="${fullUrl}" />
 
     <!-- Open Graph / Facebook / WhatsApp / LinkedIn / Telegram -->
-    <meta property="og:type" content="article" />
-    <meta property="og:site_name" content="معرض الفنون العربية" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="معرض الفنون" />
     <meta property="og:url" content="${fullUrl}" />
-    <meta property="og:title" content="${rawTitle} - ${prefix} ${artist}" />
+    <meta property="og:title" content="${shareTitle}" />
     <meta property="og:description" content="${description}" />
     <meta property="og:image" content="${imageUrl}" />
     <meta property="og:image:url" content="${imageUrl}" />
@@ -291,18 +319,18 @@ async function startServer() {
     <meta property="og:image:type" content="image/jpeg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="${rawTitle} - ${prefix} ${artist}" />
+    <meta property="og:image:alt" content="${shareTitle}" />
 
     <!-- Twitter / X Summary Large Image Card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@ArabArtGallery" />
     <meta name="twitter:domain" content="${host}" />
     <meta name="twitter:url" content="${fullUrl}" />
-    <meta name="twitter:title" content="${rawTitle} - ${prefix} ${artist}" />
+    <meta name="twitter:title" content="${shareTitle}" />
     <meta name="twitter:description" content="${description}" />
     <meta name="twitter:image" content="${imageUrl}" />
     <meta name="twitter:image:src" content="${imageUrl}" />
-    <meta name="twitter:image:alt" content="${rawTitle}" />
+    <meta name="twitter:image:alt" content="${shareTitle}" />
 
     <!-- Messaging Apps Preview Fallback (WhatsApp / iMessage) -->
     <link rel="image_src" href="${imageUrl}" />
@@ -336,7 +364,7 @@ async function startServer() {
     }
   };
 
-  app.get('/art/:id', async (req, res, next) => {
+  app.get(['/art/:id', '/artwork/:id'], async (req, res, next) => {
     const rawId = req.params.id || '';
     const artId = rawId.replace(/\.jpg$/i, '');
     return renderArtworkOpenGraph(artId, req, res, next);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Star } from 'lucide-react';
+import { Star, LogIn, Lock, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface StarRatingProps {
   ratingAverage?: number;
@@ -28,8 +29,10 @@ export const StarRating: React.FC<StarRatingProps> = ({
   showDistribution = true,
   className = ''
 }) => {
+  const { user, setIsAuthModalOpen } = useAuth();
   const [hoverRating, setHoverRating] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAuthPrompt, setShowAuthPrompt] = useState(false);
 
   const effectiveRatingAverage = ratingAverage !== undefined ? ratingAverage : (rating !== undefined ? rating : 0);
   const isInteractive = interactive !== undefined ? interactive : Boolean(onRate);
@@ -53,7 +56,16 @@ export const StarRating: React.FC<StarRatingProps> = ({
   };
 
   const handleStarClick = (stars: number) => {
-    if (!isInteractive || !onRate || isSubmitting) return;
+    if (!isInteractive || isSubmitting) return;
+
+    // Check if user is logged in
+    if (!user) {
+      setShowAuthPrompt(true);
+      return;
+    }
+
+    if (!onRate) return;
+
     setIsSubmitting(true);
     try {
       onRate(stars);
@@ -163,6 +175,56 @@ export const StarRating: React.FC<StarRatingProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Unauthenticated Visitor Rating Alert Modal */}
+      {showAuthPrompt && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-center relative animate-scaleUp dir-rtl" dir="rtl">
+            <button
+              type="button"
+              onClick={() => setShowAuthPrompt(false)}
+              className="absolute top-3 left-3 p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="إغلاق"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto ring-4 ring-amber-500/20">
+              <Lock className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="text-base font-bold text-slate-900 dark:text-white">
+                تنبيه التقييم
+              </h4>
+              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                يجب تسجيل الدخول أولًا حتى تتمكن من تقييم هذا العمل.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAuthPrompt(false);
+                  setIsAuthModalOpen(true);
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2 active:scale-95"
+              >
+                <LogIn className="w-4 h-4" />
+                تسجيل الدخول
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAuthPrompt(false)}
+                className="py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-sm transition-all active:scale-95"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

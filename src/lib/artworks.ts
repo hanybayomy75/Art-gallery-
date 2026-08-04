@@ -13,7 +13,7 @@ import {
   increment,
   onSnapshot
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { Artwork, ArtworkComment, ArtworkStatus, SortOption } from '../types';
 import { addAppNotification } from './notifications';
 
@@ -886,13 +886,20 @@ export async function rateArtwork(
     return { ratingAverage: 0, ratingCount: 0, userRating: 0, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
   }
 
-  const activeUserId = userId || getVisitorId();
+  // Strict check: Firebase auth must be present and match userId
+  const currentUser = auth.currentUser;
+  if (!currentUser || !userId || userId !== currentUser.uid) {
+    console.warn('Notice: Rating requires user authentication.');
+    return { ratingAverage: 0, ratingCount: 0, userRating: 0, ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
+  }
+
+  const activeUserId = currentUser.uid;
 
   if (typeof window !== 'undefined') {
     localStorage.setItem(`artwork_user_rating_${artId}_${activeUserId}`, rating.toString());
   }
 
-  if (artId.startsWith('wm-') || artId.startsWith('sample-') || activeUserId === 'guest') {
+  if (artId.startsWith('wm-') || artId.startsWith('sample-')) {
     const currentMeta = getArtworkRatingMeta({ id: artId } as Artwork);
     let newCount = currentMeta.ratingCount + 1;
     let newSum = currentMeta.ratingSum + rating;

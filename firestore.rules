@@ -72,7 +72,8 @@ service cloud.firestore {
       // Ratings subcollection
       match /ratings/{userId} {
         allow read: if true;
-        allow create, update, delete: if isAuthenticated() && request.auth.uid == userId;
+        allow create, update: if isAuthenticated() && request.auth.uid == userId && request.resource.data.userId == request.auth.uid;
+        allow delete: if isAuthenticated() && request.auth.uid == userId;
       }
 
       // Favorites subcollection

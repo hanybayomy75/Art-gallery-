@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Artwork, ArtworkComment, FrameStyle, FilterStyle } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -75,6 +75,45 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
   const initialPanRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const initialPinchDistRef = useRef<number | null>(null);
   const initialZoomRef = useRef<number>(1);
+
+  // Scrollable container refs for resetting scroll position on open/change
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const modalBoxRef = useRef<HTMLDivElement>(null);
+  const imagePanelRef = useRef<HTMLDivElement>(null);
+  const infoPanelRef = useRef<HTMLDivElement>(null);
+
+  // Reset scroll positions when artwork changes or modal opens
+  useLayoutEffect(() => {
+    if (artwork) {
+      const resetScroll = () => {
+        if (backdropRef.current) backdropRef.current.scrollTop = 0;
+        if (modalBoxRef.current) modalBoxRef.current.scrollTop = 0;
+        if (imagePanelRef.current) imagePanelRef.current.scrollTop = 0;
+        if (infoPanelRef.current) infoPanelRef.current.scrollTop = 0;
+      };
+
+      resetScroll();
+
+      // Secondary reset via requestAnimationFrame after DOM paint
+      const rafId = requestAnimationFrame(() => {
+        resetScroll();
+      });
+
+      return () => cancelAnimationFrame(rafId);
+    }
+  }, [artwork?.id]);
+
+  // Freeze background page scrolling while ArtworkDetailModal is open and restore on close
+  useEffect(() => {
+    if (artwork) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [artwork?.id]);
 
   const handleSetZoom = (newZoom: number | ((prev: number) => number)) => {
     setZoomLevel((prev) => {
@@ -485,8 +524,8 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
-        <div className="relative w-full max-w-5xl bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] text-right my-auto max-h-[90vh] md:max-h-[92vh] flex flex-col md:flex-row overflow-y-auto md:overflow-hidden custom-scrollbar">
+      <div ref={backdropRef} className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
+        <div ref={modalBoxRef} className="relative w-full max-w-5xl bg-[var(--bg-card)] rounded-3xl shadow-2xl border border-[var(--border-card)] text-right my-auto max-h-[90vh] md:max-h-[92vh] flex flex-col md:flex-row overflow-y-auto md:overflow-hidden custom-scrollbar">
           
           {/* Close Button */}
           <button
@@ -497,7 +536,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
           </button>
 
           {/* Left / Top Side: Main Image Frame */}
-          <div className="md:w-3/5 bg-slate-950 relative flex flex-col items-center justify-between p-3 sm:p-4 group overflow-y-auto min-h-0 max-h-full custom-scrollbar">
+          <div ref={imagePanelRef} className="md:w-3/5 bg-slate-950 relative flex flex-col items-center justify-between p-3 sm:p-4 group overflow-y-auto min-h-0 max-h-full custom-scrollbar">
             <div 
               onClick={() => setIsLightboxOpen(true)}
               className="flex-1 flex items-center justify-center my-auto w-full p-2 cursor-pointer relative group/img"
@@ -679,7 +718,7 @@ export const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
           </div>
 
           {/* Right Side: Artwork Info & Interaction Panel */}
-          <div className="md:w-2/5 p-5 sm:p-6 flex flex-col justify-between overflow-y-auto min-h-0 max-h-full space-y-6 custom-scrollbar">
+          <div ref={infoPanelRef} className="md:w-2/5 p-5 sm:p-6 flex flex-col justify-between overflow-y-auto min-h-0 max-h-full space-y-6 custom-scrollbar">
             
             {/* Artist & Title Info */}
             <div className="space-y-4">

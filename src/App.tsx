@@ -108,6 +108,19 @@ function MainApp() {
 
   const handleCloseDetailModal = () => {
     setSelectedArtwork(null);
+    if (activeView === 'home') {
+      document.title = 'معرض الفنون - منصة الفنانين والمصورين العرب';
+      window.history.pushState({}, '', '/');
+    } else if (activeView === 'artworks') {
+      document.title = 'المعرض العام للأعمال المقبولة - منصة الفنانين والمصورين العرب';
+      window.history.pushState({}, '', '/artworks');
+    } else if (activeView === 'profile') {
+      document.title = 'ملفي الشخصي | معرض الفنون';
+      window.history.pushState({}, '', '/profile');
+    } else if (activeView === 'admin') {
+      document.title = 'لوحة الإدارة | معرض الفنون';
+      window.history.pushState({}, '', '/admin');
+    }
   };
 
   const handleSelectArtworkById = (artId: string, fallbackNotif?: any) => {
@@ -241,6 +254,13 @@ function MainApp() {
       <Footer />
 
       {/* Modals & Overlays */}
+      {selectedArtwork && (
+        <ArtworkDetailModal
+          artwork={selectedArtwork}
+          onClose={handleCloseDetailModal}
+          onSelectArtwork={handleSelectArtwork}
+        />
+      )}
       <UploadModal onSuccess={() => setActiveView('profile')} />
       <AuthModal />
       <ThemeSettingsModal />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { Artwork, ArtworkComment, FrameStyle, FilterStyle } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../lib/firebase';
@@ -91,6 +91,15 @@ export const PublicArtworkPage: React.FC<PublicArtworkPageProps> = ({
   // Related Approved Artworks
   const [artistArtworks, setArtistArtworks] = useState<Artwork[]>([]);
   const [similarArtworks, setSimilarArtworks] = useState<Artwork[]>([]);
+
+  // Always reset window scroll position to top when artwork changes
+  useLayoutEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    const rafId = requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [artworkId]);
 
   // Load artwork data
   useEffect(() => {

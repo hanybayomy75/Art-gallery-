@@ -4,4 +4,4 @@ Allow: /art/
 Allow: /api/artwork-image/
 Disallow: /admin
 
-Sitemap: /sitemap.xml
+Sitemap: https://art-gallery-pink-six.vercel.app/sitemap.xml

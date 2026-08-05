@@ -116,8 +116,16 @@ Sitemap: ${SITE_DOMAIN}/sitemap.xml
   res.send(robots.trim());
 });
 
-// Serve sitemap.xml dynamically with all approved artwork pages
+// Serve sitemap.xml
 app.get('/sitemap.xml', async (req, res) => {
+  const sitemapPath = path.join(process.cwd(), 'public', 'sitemap.xml');
+  if (fs.existsSync(sitemapPath)) {
+    const xml = fs.readFileSync(sitemapPath, 'utf-8');
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    return res.send(xml.trim());
+  }
+
   const SITE_DOMAIN = 'https://art-gallery-pink-six.vercel.app';
   const today = new Date().toISOString().split('T')[0];
 

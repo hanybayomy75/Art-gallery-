@@ -51,9 +51,31 @@ export const PublicGalleryPage: React.FC<PublicGalleryPageProps> = ({
     return () => unsub();
   }, []);
 
-  // Sync initial category when prop changes
+  // Restore saved state from sessionStorage on mount
   useEffect(() => {
-    if (initialCategory) {
+    const savedStateRaw = sessionStorage.getItem('gallery_scroll_state');
+    if (savedStateRaw) {
+      try {
+        const savedState = JSON.parse(savedStateRaw);
+        if (savedState.selectedCategory) {
+          setSelectedCategory(savedState.selectedCategory);
+          if (onSelectCategory) onSelectCategory(savedState.selectedCategory);
+        }
+        if (savedState.searchQuery !== undefined) {
+          setSearchQuery(savedState.searchQuery);
+        }
+        if (savedState.sortOption) {
+          setSortOption(savedState.sortOption);
+        }
+      } catch (e) {
+        console.warn('Could not parse gallery_scroll_state:', e);
+      }
+    }
+  }, []);
+
+  // Sync initial category when prop changes (if no saved state override)
+  useEffect(() => {
+    if (initialCategory && !sessionStorage.getItem('gallery_scroll_state')) {
       setSelectedCategory(initialCategory);
     }
   }, [initialCategory]);
@@ -77,11 +99,61 @@ export const PublicGalleryPage: React.FC<PublicGalleryPageProps> = ({
     return () => unsubscribe();
   }, [selectedCategory, searchQuery, sortOption]);
 
+  // Restore scroll position after artworks are populated
+  useEffect(() => {
+    if (artworks.length === 0) return;
+    const savedStateRaw = sessionStorage.getItem('gallery_scroll_state');
+    if (!savedStateRaw) return;
+
+    try {
+      const { scrollY, artworkId } = JSON.parse(savedStateRaw);
+
+      const restore = () => {
+        let restored = false;
+        if (artworkId) {
+          const el = document.getElementById(`artwork-card-${artworkId}`);
+          if (el) {
+            el.scrollIntoView({ block: 'center', behavior: 'instant' });
+            restored = true;
+          }
+        }
+        if (!restored && typeof scrollY === 'number' && scrollY > 0) {
+          window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
+        }
+      };
+
+      restore();
+      const t1 = setTimeout(restore, 50);
+      const t2 = setTimeout(restore, 150);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    } catch (e) {
+      console.warn('Scroll restore error in PublicGalleryPage:', e);
+    }
+  }, [artworks.length]);
+
   const handleCategoryClick = (cat: string) => {
+    sessionStorage.removeItem('gallery_scroll_state');
     setSelectedCategory(cat);
     if (onSelectCategory) {
       onSelectCategory(cat);
     }
+  };
+
+  const handleArtworkClick = (art: Artwork) => {
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+    const galleryState = {
+      scrollY,
+      artworkId: art.id,
+      selectedCategory,
+      searchQuery,
+      sortOption,
+      activeView: 'artworks'
+    };
+    sessionStorage.setItem('gallery_scroll_state', JSON.stringify(galleryState));
+    onSelectArtwork(art);
   };
 
   return (
@@ -211,8 +283,9 @@ export const PublicGalleryPage: React.FC<PublicGalleryPageProps> = ({
 
               return (
                 <div
+                  id={`artwork-card-${art.id}`}
                   key={art.id}
-                  onClick={() => onSelectArtwork(art)}
+                  onClick={() => handleArtworkClick(art)}
                   className="group bg-[var(--bg-card)] rounded-3xl overflow-hidden border border-[var(--border-card)] shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col"
                 >
                   {/* Artwork Image */}

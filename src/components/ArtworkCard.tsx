@@ -77,6 +77,7 @@ export const ArtworkCard: React.FC<ArtworkCardProps> = ({ artwork, onClick, show
 
   return (
     <div
+      id={`artwork-card-${artwork.id}`}
       onClick={onClick}
       className="group relative bg-[var(--bg-card)] rounded-2xl overflow-hidden border border-[var(--border-card)] shadow-md hover:shadow-2xl transition-all duration-300 hover:-translate-y-1 cursor-pointer flex flex-col"
     >

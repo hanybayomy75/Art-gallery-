@@ -3,7 +3,6 @@ import { AuthProvider } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
 import { GalleryGrid } from './components/GalleryGrid';
-import { ArtworkDetailModal } from './components/ArtworkDetailModal';
 import { UploadModal } from './components/UploadModal';
 import { AuthModal } from './components/AuthModal';
 import { ThemeSettingsModal } from './components/ThemeSettingsModal';
@@ -254,13 +253,6 @@ function MainApp() {
       <Footer />
 
       {/* Modals & Overlays */}
-      {selectedArtwork && (
-        <ArtworkDetailModal
-          artwork={selectedArtwork}
-          onClose={handleCloseDetailModal}
-          onSelectArtwork={handleSelectArtwork}
-        />
-      )}
       <UploadModal onSuccess={() => setActiveView('profile')} />
       <AuthModal />
       <ThemeSettingsModal />

@@ -37,10 +37,25 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
   const selectedCategory = propCategory !== undefined ? propCategory : internalCategory;
 
   const handleCategorySelect = (cat: string) => {
+    sessionStorage.removeItem('gallery_scroll_state');
     if (onCategoryChange) {
       onCategoryChange(cat);
     }
     setInternalCategory(cat);
+  };
+
+  const handleArtworkClick = (art: Artwork) => {
+    const scrollY = window.scrollY || window.pageYOffset || 0;
+    const galleryState = {
+      scrollY,
+      artworkId: art.id,
+      selectedCategory,
+      searchQuery,
+      sortOption,
+      activeView: 'home'
+    };
+    sessionStorage.setItem('gallery_scroll_state', JSON.stringify(galleryState));
+    onSelectArtwork(art);
   };
 
   useEffect(() => {
@@ -63,6 +78,41 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
       window.removeEventListener('artwork_uploaded', handleRefresh);
     };
   }, [selectedCategory, searchQuery, sortOption]);
+
+  // Restore scroll position when artworks are rendered
+  useEffect(() => {
+    if (artworks.length === 0) return;
+    const savedStateRaw = sessionStorage.getItem('gallery_scroll_state');
+    if (!savedStateRaw) return;
+
+    try {
+      const { scrollY, artworkId } = JSON.parse(savedStateRaw);
+
+      const restore = () => {
+        let restored = false;
+        if (artworkId) {
+          const cardEl = document.getElementById(`artwork-card-${artworkId}`);
+          if (cardEl) {
+            cardEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+            restored = true;
+          }
+        }
+        if (!restored && typeof scrollY === 'number' && scrollY > 0) {
+          window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' });
+        }
+      };
+
+      restore();
+      const t1 = setTimeout(restore, 50);
+      const t2 = setTimeout(restore, 150);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+      };
+    } catch (e) {
+      console.warn('Scroll restore error in GalleryGrid:', e);
+    }
+  }, [artworks.length]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,7 +209,7 @@ export const GalleryGrid: React.FC<GalleryGridProps> = ({
             <ArtworkCard
               key={art.id}
               artwork={art}
-              onClick={() => onSelectArtwork(art)}
+              onClick={() => handleArtworkClick(art)}
             />
           ))}
         </div>

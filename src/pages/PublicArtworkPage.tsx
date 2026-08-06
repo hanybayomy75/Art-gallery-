@@ -405,9 +405,30 @@ export const PublicArtworkPage: React.FC<PublicArtworkPageProps> = ({
 
           {/* Quick Action Badges */}
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold">
+            <button
+              onClick={() => {
+                const savedStateRaw = sessionStorage.getItem('gallery_scroll_state');
+                if (savedStateRaw) {
+                  try {
+                    const { activeView: prevView } = JSON.parse(savedStateRaw);
+                    if (prevView === 'home') {
+                      onNavigateHome();
+                      return;
+                    }
+                  } catch (e) {}
+                }
+                onNavigateGallery();
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-[var(--color-primary)] text-white text-xs font-bold hover:opacity-90 transition-all flex items-center gap-1.5 shadow-sm"
+              title="الرجوع إلى المعرض مع الحفاظ على موقع التصفح والفلاتر"
+            >
+              <Grid className="w-4 h-4" />
+              <span>عرض أعمال أخرى</span>
+            </button>
+
+            <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-bold">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>عمل فني معتمد</span>
+              <span>عمل معتمد</span>
             </span>
 
             <button

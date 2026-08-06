@@ -402,7 +402,13 @@ const renderArtworkOpenGraph = async (artId: string, req: express.Request, res: 
     }).send(templateHtml);
   } catch (err) {
     console.error('Error rendering Open Graph tags:', err);
-    return next();
+    try {
+      const fallbackPath = path.join(process.cwd(), 'index.html');
+      if (fs.existsSync(fallbackPath)) {
+        return res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send(fs.readFileSync(fallbackPath, 'utf-8'));
+      }
+    } catch (e) {}
+    return res.status(200).set({ 'Content-Type': 'text/html; charset=utf-8' }).send('<!doctype html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"/><title>معرض الفنون</title></head><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>');
   }
 };
 

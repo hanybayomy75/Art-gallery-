@@ -238,6 +238,42 @@ export const PublicArtworkPage: React.FC<PublicArtworkPageProps> = ({
     };
   }, [artwork, ratingMeta]);
 
+  // Update page title and Open Graph meta tags dynamically on client side
+  useEffect(() => {
+    if (!artwork) return;
+
+    const artistName = artwork.artistName || artwork.userName || 'فنان المعرض';
+    const artistPrefix = getArtistPrefix(artwork.category);
+    const titleText = `${artwork.title} - ${artistPrefix} ${artistName} | معرض الفنون`;
+    document.title = titleText;
+
+    const setMeta = (property: string, content: string, isName = false) => {
+      const selector = isName ? `meta[name="${property}"]` : `meta[property="${property}"]`;
+      let meta = document.querySelector(selector);
+      if (!meta) {
+        meta = document.createElement('meta');
+        if (isName) {
+          meta.setAttribute('name', property);
+        } else {
+          meta.setAttribute('property', property);
+        }
+        document.head.appendChild(meta);
+      }
+      meta.setAttribute('content', content);
+    };
+
+    setMeta('og:title', titleText);
+    setMeta('og:description', artwork.description || `${artwork.title} - ${artistPrefix} ${artistName}`);
+    if (artwork.imageUrl) {
+      setMeta('og:image', artwork.imageUrl);
+      setMeta('og:image:secure_url', artwork.imageUrl);
+      setMeta('twitter:image', artwork.imageUrl, true);
+      setMeta('twitter:image:src', artwork.imageUrl, true);
+    }
+    setMeta('twitter:title', titleText, true);
+    setMeta('twitter:card', 'summary_large_image', true);
+  }, [artwork]);
+
   // Handle Like
   const handleToggleLike = async () => {
     if (!artwork) return;
